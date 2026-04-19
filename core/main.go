@@ -265,8 +265,11 @@ func run() error {
 		fmt.Printf("🔌 [REST API] Escuchando en http://127.0.0.1:%d/v1/\n", *apiPort)
 	}
 
+	// == INICIAR BRIDGES DE INTEROPERABILIDAD Y AGENTES ==
+	bridge.StartMCPServer(nodeInfo)
+	bridge.StartAgentSandbox(tunnel)
 	if *mqttBroker != "" {
-		go bridge.StartMQTTBridge(nodeInfo, *mqttBroker)
+		bridge.StartMQTTBridge(nodeInfo, *mqttBroker)
 		fmt.Printf("📨 [MQTT] Bridge conectado a %s\n", *mqttBroker)
 	}
 

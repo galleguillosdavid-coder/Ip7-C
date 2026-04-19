@@ -2,8 +2,10 @@ package overlay
 
 import (
 	"fmt"
+	"math/rand"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/galleguillosdavid-coder/Ip7-C/core/protocol"
 )
@@ -157,15 +159,32 @@ func (t *Tunnel) EnableTCPFallback(handler func(addr protocol.IPv7Address, data 
 	}
 }
 
-// startDispatcher orquesta los tres expertos MoE.
-// Siempre prioriza ExpertLatency.
+// startDispatcher orquesta los expertos usando Lógica de Decits (P-bits Estocásticos).
+// Evita priorización rígida; usa probabilidad para colapsar paquetes, balanceando latencia/congestión matemáticamente.
 // Fix: lee RemoteAddr con lock y verifica nil para evitar panic y data race.
 func (t *Tunnel) startDispatcher() {
+	var decitRand rand.Rand
+	decitRand.Seed(time.Now().UnixNano())
+
 	for {
 		var packet []byte
+		
+		pBit := decitRand.Float32() // Decit Colapso Estocástico de Paridad
+		
 		select {
-		case p := <-t.PriorityQueue: // Expert Latency siempre primero
-			packet = p
+		case p := <-t.PriorityQueue: 
+			// En un router clásico aquí se enruta directo. En Decit, interferencia probabilística:
+			if pBit > 0.1 || len(t.StandardQueue) == 0 { // 90% certidumbre cuántica
+				packet = p
+			} else {
+				// El ruido térmico forzó que el Standard pase temporalmente (evita starvation)
+				select {
+				case pStd := <-t.StandardQueue:
+					packet = pStd
+				default:
+					packet = p // colapso seguro
+				}
+			}
 		default:
 			select {
 			case p := <-t.PriorityQueue:

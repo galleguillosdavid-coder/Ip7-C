@@ -13,33 +13,37 @@ package protocol
 type TrafficClass uint8
 
 const (
-	// TC_CONTROL: señalización, handshake PQC, mensajes DHT, keepalive
-	// → Latencia crítica, tamaño pequeño, máxima prioridad
-	TC_CONTROL TrafficClass = 0
+	// Implementación Decit Cuántico: 10 Niveles de Tráfico en lugar de 4.
+	// Emula lógica Multivaluada (Álgebra de Post/Lukasiewicz).
+	TC_Q0_CRITICAL TrafficClass = 0
+	TC_Q1_REALTIME TrafficClass = 1
+	TC_Q2_CONTROL  TrafficClass = 2
+	TC_Q3_SIG      TrafficClass = 3
+	TC_Q4_BULK     TrafficClass = 4
+	TC_Q5_BACKGROUND TrafficClass = 5
+	// TC_Q6 a Q9 reservados para experimentación interferencial AI agentica
+	TC_Q6 TrafficClass = 6
+	TC_Q7 TrafficClass = 7
+	TC_Q8 TrafficClass = 8
+	TC_Q9 TrafficClass = 9
 
-	// TC_REALTIME: telemedicina, juegos, SCADA, video en tiempo real
-	// → Latencia <10ms requerida, jitter zero-tolerance
-	TC_REALTIME TrafficClass = 1
-
-	// TC_BULK: transferencias de archivos, firmware OTA, backups NAS
-	// → Tolerante a latencia, ancho de banda máximo
-	TC_BULK TrafficClass = 2
-
-	// TC_BACKGROUND: telemetría pasiva, logs, sensores IoT de bajo consumo
-	// → Puede esperar segundos o minutos, no interrumpir tráfico crítico
-	TC_BACKGROUND TrafficClass = 3
+	// Alias legados para Slices autogenerados
+	TC_CONTROL    = TC_Q0_CRITICAL
+	TC_REALTIME   = TC_Q1_REALTIME
+	TC_BULK       = TC_Q4_BULK
+	TC_BACKGROUND = TC_Q5_BACKGROUND
 )
 
-// TCFromSubPort extrae la TrafficClass del campo SubPort.
-// Los bits 15-14 codifican la clase (2 bits = 4 clases).
+// TCFromSubPort extrae la TrafficClass del campo SubPort usando enmascaramiento Decit.
+// Los bits 15-12 codifican la clase (4 bits = hasta 16 clases, usamos 10 decits).
 func TCFromSubPort(subPort uint16) TrafficClass {
-	return TrafficClass((subPort >> 14) & 0x03)
+	return TrafficClass((subPort >> 12) & 0x0F)
 }
 
-// SubPortWithTC construye un SubPort codificando la TrafficClass en los bits 15-14
-// y el canal lógico (0-16383) en bits 13-0.
+// SubPortWithTC construye un SubPort codificando la TrafficClass P-bit en los bits 15-12
+// y el canal lógico (0-4095) en bits 11-0.
 func SubPortWithTC(tc TrafficClass, channel uint16) uint16 {
-	return (uint16(tc) << 14) | (channel & 0x3FFF)
+	return (uint16(tc) << 12) | (channel & 0x0FFF)
 }
 
 // ─── Network Slice Profiles (Previsiones.md §IMT-2030 6G Network Slicing) ─────────────────
