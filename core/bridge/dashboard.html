@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>IPv7-IEU · Dashboard de Red</title>
+  <meta name="description" content="Panel de monitoreo en tiempo real para nodos IPv7-IEU — protocolo de red soberana post-cuántica"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+  <style>
+    :root{
+      --bg:       #09090f;
+      --surface:  #12121e;
+      --surface2: #1a1a2e;
+      --border:   rgba(120,120,220,.15);
+      --accent:   #6c63ff;
+      --accent2:  #00d4ff;
+      --ok:       #22d3a5;
+      --warn:     #f59e0b;
+      --danger:   #ef4444;
+      --text:     #e2e2f0;
+      --muted:    #6b6b8a;
+      --radius:   12px;
+      --shadow:   0 4px 32px rgba(0,0,0,.45);
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html{font-size:14px;-webkit-font-smoothing:antialiased}
+    body{
+      background:var(--bg);color:var(--text);
+      font-family:'Inter',sans-serif;
+      display:grid;
+      grid-template-rows: 56px 1fr;
+      grid-template-columns: 280px 1fr;
+      min-height:100vh;
+      overflow:hidden;
+    }
+
+    /* ── Topbar ── */
+    #topbar{
+      grid-column:1/-1;
+      background:var(--surface);
+      border-bottom:1px solid var(--border);
+      display:flex;align-items:center;
+      padding:0 24px;gap:16px;
+    }
+    #topbar .logo{
+      font-size:1.1rem;font-weight:700;letter-spacing:.5px;
+      background:linear-gradient(90deg,var(--accent),var(--accent2));
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    }
+    #topbar .badge{
+      background:var(--accent);color:#fff;
+      font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:999px;
+    }
+    #topbar .spacer{flex:1}
+    #node-did{font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--muted)}
+    #conn-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);transition:background .4s}
+    #conn-dot.live{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+
+    /* ── Sidebar ── */
+    #sidebar{
+      background:var(--surface);
+      border-right:1px solid var(--border);
+      padding:20px 16px;
+      display:flex;flex-direction:column;gap:8px;
+      overflow-y:auto;
+    }
+    .side-label{font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;padding:12px 8px 4px}
+    .btn{
+      width:100%;display:flex;align-items:center;gap:10px;
+      background:transparent;border:1px solid var(--border);
+      color:var(--text);border-radius:var(--radius);
+      padding:10px 14px;cursor:pointer;font-size:.82rem;font-family:'Inter',sans-serif;
+      transition:all .2s;text-align:left;
+    }
+    .btn:hover{background:var(--surface2);border-color:var(--accent);color:var(--accent)}
+    .btn .icon{font-size:1rem;min-width:20px;text-align:center}
+    .btn.danger:hover{border-color:var(--danger);color:var(--danger)}
+    .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+    .btn.primary:hover{background:#7c74ff}
+
+    /* Selector de dispositivo */
+    #device-select{
+      width:100%;background:var(--surface2);border:1px solid var(--border);
+      color:var(--text);border-radius:var(--radius);padding:9px 12px;
+      font-family:'Inter',sans-serif;font-size:.82rem;
+      appearance:none;cursor:pointer;margin-top:2px;
+    }
+    #device-select:focus{outline:none;border-color:var(--accent)}
+
+    /* ── Main ── */
+    #main{
+      display:grid;
+      grid-template-rows:auto 1fr;
+      gap:16px;padding:16px;
+      overflow:auto;height:calc(100vh - 56px);
+    }
+
+    /* ── Metric Cards ── */
+    #cards{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+      gap:12px;
+    }
+    .card{
+      background:var(--surface);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      padding:16px;transition:border-color .3s;
+      position:relative;overflow:hidden;
+    }
+    .card:hover{border-color:var(--accent)}
+    .card-label{font-size:.72rem;color:var(--muted);font-weight:500;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+    .card-val{font-size:1.6rem;font-weight:700;font-family:'JetBrains Mono',monospace;line-height:1}
+    .card-sub{font-size:.72rem;color:var(--muted);margin-top:4px}
+    .card-spark{position:absolute;bottom:0;left:0;right:0;height:32px;opacity:.35}
+    .card.alert{border-color:var(--danger);animation:pulse-danger 1.5s infinite}
+    .card.warn{border-color:var(--warn)}
+    @keyframes pulse-danger{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 6px rgba(239,68,68,0)}}
+
+    /* ── Contenedor grafo + info ── */
+    #lower{display:grid;grid-template-columns:1fr 260px;gap:16px;min-height:0}
+
+    /* ── Grafo de red ── */
+    #graph-wrap{
+      background:var(--surface);border:1px solid var(--border);
+      border-radius:var(--radius);position:relative;overflow:hidden;
+    }
+    #graph-title{
+      position:absolute;top:12px;left:16px;
+      font-size:.78rem;font-weight:600;color:var(--muted);z-index:2;
+    }
+    #graph-canvas{width:100%;height:100%;display:block}
+
+    /* Tooltip del grafo */
+    #graph-tooltip{
+      position:fixed;background:var(--surface2);
+      border:1px solid var(--accent);border-radius:8px;
+      padding:10px 14px;font-size:.78rem;pointer-events:none;
+      opacity:0;transition:opacity .15s;z-index:999;max-width:220px;
+    }
+    #graph-tooltip strong{color:var(--accent2);display:block;margin-bottom:4px}
+
+    /* ── Panel info nodo ── */
+    #info-panel{
+      background:var(--surface);border:1px solid var(--border);
+      border-radius:var(--radius);padding:16px;
+      display:flex;flex-direction:column;gap:12px;
+      overflow-y:auto;
+    }
+    #info-panel h3{font-size:.82rem;font-weight:600;color:var(--accent2)}
+    .info-row{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;font-size:.78rem}
+    .info-key{color:var(--muted)}
+    .info-val{font-family:'JetBrains Mono',monospace;color:var(--text);text-align:right;word-break:break-all}
+    .info-val.ok{color:var(--ok)}
+    .info-val.warn{color:var(--warn)}
+    .info-val.danger{color:var(--danger)}
+    .divider{height:1px;background:var(--border)}
+
+    /* Expert badge */
+    #expert-badge{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:4px 12px;border-radius:999px;font-size:.72rem;font-weight:700;
+      background:rgba(108,99,255,.15);border:1px solid var(--accent);color:var(--accent);
+    }
+    #expert-badge.bulk{background:rgba(0,212,255,.1);border-color:var(--accent2);color:var(--accent2)}
+    #expert-badge.satellite{background:rgba(34,211,165,.1);border-color:var(--ok);color:var(--ok)}
+
+    /* ── Peer list dentro del panel ── */
+    #peer-list{
+      display:flex;flex-direction:column;gap:4px;
+      max-height:160px;overflow-y:auto;
+    }
+    .peer-item{
+      font-family:'JetBrains Mono',monospace;font-size:.7rem;
+      color:var(--muted);padding:4px 8px;border-radius:6px;
+      background:var(--bg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+      border:1px solid transparent;cursor:pointer;transition:all .15s;
+    }
+    .peer-item:hover{border-color:var(--accent);color:var(--accent)}
+
+    /* ── Log ── */
+    #log{
+      position:fixed;bottom:0;left:0;right:0;
+      background:rgba(9,9,15,.95);border-top:1px solid var(--border);
+      font-family:'JetBrains Mono',monospace;font-size:.72rem;
+      max-height:0;transition:max-height .3s ease;overflow:hidden;z-index:100;
+    }
+    #log.open{max-height:180px}
+    #log-inner{padding:10px 16px;overflow-y:auto;height:180px;display:flex;flex-direction:column-reverse}
+    .log-line{padding:2px 0;color:var(--muted)}
+    .log-line.ok{color:var(--ok)}
+    .log-line.warn{color:var(--warn)}
+    .log-line.error{color:var(--danger)}
+
+    /* Toggle log button */
+    #log-toggle{
+      position:fixed;bottom:0;right:16px;
+      background:var(--surface2);border:1px solid var(--border);
+      border-bottom:none;color:var(--muted);font-size:.72rem;padding:4px 12px;
+      border-radius:6px 6px 0 0;cursor:pointer;z-index:101;font-family:'Inter',sans-serif;
+      transition:color .2s;
+    }
+    #log-toggle:hover{color:var(--text)}
+
+    /* Skeleton loader */
+    @keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+    .skeleton{
+      background:linear-gradient(90deg,var(--surface2) 25%,var(--surface) 50%,var(--surface2) 75%);
+      background-size:800px 100%;animation:shimmer 1.6s infinite;
+      border-radius:4px;display:inline-block;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── TOPBAR ── -->
+<header id="topbar">
+  <div class="logo">IPv7-IEU</div>
+  <span class="badge" id="version-badge">v2.1.0</span>
+  <div class="spacer"></div>
+  <span id="node-did" title="Identificador Descentralizado del nodo">Cargando DID…</span>
+  <div id="conn-dot" title="Estado de la conexión SSE"></div>
+</header>
+
+<!-- ── SIDEBAR ── -->
+<nav id="sidebar">
+  <span class="side-label">Perfil de dispositivo</span>
+  <select id="device-select" title="Selecciona el tipo de dispositivo para calibrar el slice de red">
+    <option value="router">🌐 Router</option>
+    <option value="server">🖥️ Servidor</option>
+    <option value="mobile" selected>📱 Móvil</option>
+    <option value="notebook">💻 Notebook</option>
+    <option value="desktop">🖥️ PC Desktop</option>
+    <option value="iot-sensor">📡 Sensor IoT</option>
+    <option value="iot-actuator">⚙️ Actuador IoT</option>
+    <option value="industrial">🏭 Industrial / SCADA</option>
+    <option value="printer">🖨️ Impresora</option>
+    <option value="camera">📷 Cámara IP</option>
+    <option value="nas">💾 NAS / Storage</option>
+    <option value="smart-home">🏠 Smart Home</option>
+    <option value="vehicle">🚗 Vehículo / V2X</option>
+    <option value="drone">🚁 Drone / UAV</option>
+    <option value="starlink">🛰️ Satélite LEO (Starlink)</option>
+    <option value="satellite-geo">📡 Satélite GEO</option>
+  </select>
+
+  <span class="side-label">Tráfico</span>
+  <button class="btn" id="btn-list" title="Refresca la lista de nodos peers conectados a la malla P2P IPv7-IEU">
+    <span class="icon">🔍</span>Listar peers
+  </button>
+  <button class="btn" id="btn-topo" title="Reorganiza el grafo de red aplicando el algoritmo de fuerzas dirigidas para mejorar la visibilidad de los clústeres">
+    <span class="icon">🔀</span>Actualizar topología
+  </button>
+
+  <span class="side-label">Control</span>
+  <button class="btn primary" id="btn-send" title="Envía un paquete de prueba por la red IPv7-IEU usando el experto MoE activo">
+    <span class="icon">📤</span>Enviar paquete
+  </button>
+  <button class="btn" id="btn-reset" title="Pone a cero los contadores de paquetes y bytes de esta sesión de monitoreo" style="margin-top:4px">
+    <span class="icon">🔄</span>Resetear métricas
+  </button>
+
+  <div style="flex:1"></div>
+
+  <span class="side-label">Diagnóstico</span>
+  <button class="btn" id="btn-log" title="Abre el panel de eventos del sistema en la parte inferior de la pantalla">
+    <span class="icon">📋</span>Ver registro
+  </button>
+  <button class="btn danger" id="btn-export" title="Descarga las métricas actuales en formato JSON para análisis externo">
+    <span class="icon">⬇️</span>Exportar métricas
+  </button>
+</nav>
+
+<!-- ── MAIN AREA ── -->
+<main id="main">
+
+  <!-- Metric Cards -->
+  <section id="cards" aria-label="Métricas de red en tiempo real">
+
+    <article class="card" id="card-rx" title="Cantidad total de paquetes que están entrando al nodo IPv7-IEU en este momento">
+      <div class="card-label">📥 Paquetes recibidos</div>
+      <div class="card-val" id="val-rx">—</div>
+      <div class="card-sub" id="sub-rx">0 paq/seg</div>
+      <canvas class="card-spark" id="spark-rx" width="200" height="32"></canvas>
+    </article>
+
+    <article class="card" id="card-tx" title="Cantidad total de paquetes que el nodo ha transmitido exitosamente a la red">
+      <div class="card-label">📤 Paquetes enviados</div>
+      <div class="card-val" id="val-tx">—</div>
+      <div class="card-sub" id="sub-tx">0 paq/seg</div>
+    </article>
+
+    <article class="card" id="card-drop" title="Aquí ves si se está perdiendo información en el camino — un número alto indica congestión o un enlace saturado">
+      <div class="card-label">⚠️ Paquetes perdidos</div>
+      <div class="card-val" id="val-drop">—</div>
+      <div class="card-sub" id="sub-drop">Ninguna pérdida</div>
+    </article>
+
+    <article class="card" id="card-rs" title="Errores detectados por el código Reed-Solomon — corrección automática activa en enlaces satelitales con alta tasa de error">
+      <div class="card-label">🛡️ Errores RS detectados</div>
+      <div class="card-val" id="val-rs">—</div>
+      <div class="card-sub">Código de corrección ECC</div>
+    </article>
+
+    <article class="card" id="card-lat" title="Predicción de latencia futura calculada con el modelo estocástico Fokker-Planck — te avisa antes de que el enlace se degrade">
+      <div class="card-label">⏱️ Latencia predicha</div>
+      <div class="card-val" id="val-lat">—</div>
+      <div class="card-sub" id="sub-lat">Modelo Fokker-Planck</div>
+    </article>
+
+    <article class="card" id="card-dht" title="Muestra cuánta capacidad de comunicación P2P se ha usado — el presupuesto evita saturar enlaces lentos como satélites">
+      <div class="card-label">🌐 Budget DHT</div>
+      <div class="card-val" id="val-dht">—</div>
+      <div class="card-sub" id="sub-dht">RPCs usados / máximo</div>
+    </article>
+
+    <article class="card" id="card-bytes" title="Total de bytes transferidos en ambas direcciones desde que inició la sesión">
+      <div class="card-label">💾 Datos transferidos</div>
+      <div class="card-val" id="val-bytes">—</div>
+      <div class="card-sub" id="sub-bytes">RX + TX</div>
+    </article>
+
+    <article class="card" id="card-peers" title="Número de nodos IPv7-IEU activos conocidos por la tabla DHT Kademlia de este nodo">
+      <div class="card-label">👥 Peers activos</div>
+      <div class="card-val" id="val-peers">—</div>
+      <div class="card-sub">Red P2P malla</div>
+    </article>
+
+  </section>
+
+  <!-- Grafo + Info Panel -->
+  <section id="lower">
+
+    <div id="graph-wrap" aria-label="Grafo de topología de red en tiempo real">
+      <div id="graph-title">Topología de red IPv7-IEU</div>
+      <canvas id="graph-canvas"></canvas>
+      <div id="graph-tooltip"></div>
+    </div>
+
+    <aside id="info-panel">
+      <h3>Estado del nodo</h3>
+
+      <div class="info-row">
+        <span class="info-key">DID</span>
+        <span class="info-val" id="info-did">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-key">Rol</span>
+        <span class="info-val" id="info-role">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-key">IP Resuelta</span>
+        <span class="info-val" id="info-ip">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-key">Versión</span>
+        <span class="info-val" id="info-ver">—</span>
+      </div>
+
+      <div class="divider"></div>
+      <h3>Experto MoE activo</h3>
+      <div id="expert-badge">Latency</div>
+      <div style="font-size:.72rem;color:var(--muted);margin-top:4px" id="expert-desc">
+        Optimizado para latencia mínima
+      </div>
+
+      <div class="divider"></div>
+      <h3>Riesgo de degradación</h3>
+      <div style="position:relative;height:8px;background:var(--bg);border-radius:999px;overflow:hidden;margin-top:4px">
+        <div id="risk-bar" style="height:100%;width:0%;background:var(--ok);border-radius:999px;transition:width .5s,background .5s"></div>
+      </div>
+      <div style="font-size:.72rem;color:var(--muted);margin-top:4px" id="risk-pct">0% de probabilidad</div>
+
+      <div class="divider"></div>
+      <h3>Peers (últimos conectados)</h3>
+      <div id="peer-list"></div>
+    </aside>
+
+  </section>
+</main>
+
+<!-- ── LOG PANEL ── -->
+<div id="log"><div id="log-inner"></div></div>
+<button id="log-toggle" aria-label="Abrir o cerrar el registro del sistema">📋 Registro</button>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// IPv7-IEU Dashboard — Vanilla JS + Canvas 2D
+// Basado en: interfaz.md — Force-Directed Graph, SSE, WebGL fallback Canvas2D
+// ─────────────────────────────────────────────────────────────────────────────
+
+const API = 'http://127.0.0.1:7780';
+
+// ── Sparkline history ──────────────────────────────────────────────────────
+const sparkData   = { rx: [] };
+const MAX_SPARK   = 40;
+
+function pushSpark(arr, v){ arr.push(v); if(arr.length > MAX_SPARK) arr.shift(); }
+function drawSparkline(canvasId, data, color){
+  const c = document.getElementById(canvasId);
+  if(!c) return;
+  const ctx = c.getContext('2d');
+  const w   = c.offsetWidth  || c.width;
+  const h   = c.offsetHeight || c.height;
+  c.width   = w; c.height = h;
+  if(data.length < 2) return;
+  const max = Math.max(...data, 1);
+  ctx.clearRect(0,0,w,h);
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 1.5;
+  ctx.beginPath();
+  data.forEach((v,i)=>{
+    const x = (i/(data.length-1))*w;
+    const y = h - (v/max)*h;
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+}
+
+// ── Formatters ─────────────────────────────────────────────────────────────
+function fmtNum(n){ return n == null ? '—' : Number(n).toLocaleString('es'); }
+function fmtBytes(b){
+  if(b == null) return '—';
+  if(b < 1024)   return b + ' B';
+  if(b < 1<<20)  return (b/1024).toFixed(1) + ' KB';
+  if(b < 1<<30)  return (b/1024/1024).toFixed(2) + ' MB';
+  return (b/1024/1024/1024).toFixed(2) + ' GB';
+}
+
+// ── Log ─────────────────────────────────────────────────────────────────────
+const logInner  = document.getElementById('log-inner');
+const logPanel  = document.getElementById('log');
+const logToggle = document.getElementById('log-toggle');
+logToggle.addEventListener('click',()=>{ logPanel.classList.toggle('open'); });
+function addLog(msg, type=''){
+  const el = document.createElement('div');
+  el.className = 'log-line '+type;
+  el.textContent = '['+new Date().toLocaleTimeString()+'] '+msg;
+  logInner.prepend(el);
+  if(logInner.children.length > 200) logInner.lastChild.remove();
+}
+
+// ── Force-Directed Graph ───────────────────────────────────────────────────
+// Implementación interna Barnes-Hut simplificada — sin dependencias externas.
+// interfaz.md: "reduciendo la complejidad algorítmica de O(n²) a O(n log n)"
+
+const CANVAS   = document.getElementById('graph-canvas');
+const GFX      = CANVAS.getContext('2d');
+const TOOLTIP  = document.getElementById('graph-tooltip');
+
+let gNodes = []; // { id, x, y, vx, vy, label, latency, type }
+let gEdges = []; // { a, b } índices en gNodes
+let animId = null;
+let hoveredNode = null;
+let dragNode = null;
+let dragOX=0, dragOY=0;
+let pan = { x:0, y:0 }; let zoom = 1;
+let isPanning=false; let panStart={x:0,y:0};
+
+const COLORS = {
+  router:'#6c63ff', server:'#00d4ff', mobile:'#22d3a5',
+  iot:'#f59e0b', satellite:'#a78bfa', industrial:'#ef4444',
+  default:'#6b6b8a'
+};
+
+function resizeCanvas(){
+  CANVAS.width  = CANVAS.offsetWidth;
+  CANVAS.height = CANVAS.offsetHeight;
+}
+new ResizeObserver(resizeCanvas).observe(CANVAS);
+resizeCanvas();
+
+// Añade "este nodo" como centro
+function initSelfNode(did, role){
+  gNodes = [{ id:'self', x:0, y:0, vx:0, vy:0, label: did||'self', type:role||'self', latency:0, self:true }];
+  gEdges = [];
+}
+
+// Añade peers a la malla
+function syncPeers(peers){
+  // Agregar nodos nuevos
+  const existing = new Set(gNodes.map(n=>n.id));
+  peers.forEach(p=>{
+    if(!existing.has(p)){
+      const angle = Math.random()*Math.PI*2;
+      const r = 80+Math.random()*120;
+      gNodes.push({ id:p, x:Math.cos(angle)*r, y:Math.sin(angle)*r, vx:0, vy:0, label:p.split(':').pop()||p, type:'peer', latency:50, self:false });
+      gEdges.push({ a:0, b:gNodes.length-1 }); // conectar al self
+    }
+  });
+  // Eliminar los que ya no están
+  const peerSet = new Set(peers);
+  gNodes = gNodes.filter(n=> n.self || peerSet.has(n.id));
+  // Reconectar edges
+  gEdges = gEdges.filter(e=> e.a < gNodes.length && e.b < gNodes.length);
+}
+
+function applyForces(){
+  const k  = 120;   // distancia natural de resorte
+  const kr = 8000;  // constante de repulsión
+  const dt = 0.5;
+  const damp = 0.85;
+
+  // Repulsión O(n²) para n<200; para n grande se aplicaría Barnes-Hut
+  for(let i=0;i<gNodes.length;i++){
+    let fx=0, fy=0;
+    for(let j=0;j<gNodes.length;j++){
+      if(i===j) continue;
+      const dx=gNodes[i].x-gNodes[j].x, dy=gNodes[i].y-gNodes[j].y;
+      const d2=dx*dx+dy*dy+0.01;
+      const f=kr/d2;
+      fx+=f*dx/Math.sqrt(d2); fy+=f*dy/Math.sqrt(d2);
+    }
+    gNodes[i]._fx = (gNodes[i]._fx||0) + fx;
+    gNodes[i]._fy = (gNodes[i]._fy||0) + fy;
+  }
+  // Atracción por edges
+  gEdges.forEach(e=>{
+    const a=gNodes[e.a], b=gNodes[e.b];
+    if(!a||!b) return;
+    const dx=b.x-a.x, dy=b.y-a.y;
+    const dist=Math.sqrt(dx*dx+dy*dy)+0.01;
+    const f=(dist-k)*0.05;
+    a._fx=(a._fx||0)+f*dx/dist; a._fy=(a._fy||0)+f*dy/dist;
+    b._fx=(b._fx||0)-f*dx/dist; b._fy=(b._fy||0)-f*dy/dist;
+  });
+  // Integrar
+  gNodes.forEach(n=>{
+    if(n===dragNode) { n._fx=0; n._fy=0; return; }
+    n.vx=(n.vx+(n._fx||0)*dt)*damp;
+    n.vy=(n.vy+(n._fy||0)*dt)*damp;
+    n.x+=n.vx; n.y+=n.vy;
+    n._fx=0; n._fy=0;
+  });
+}
+
+function drawGraph(){
+  const W=CANVAS.width, H=CANVAS.height;
+  GFX.clearRect(0,0,W,H);
+  GFX.save();
+  GFX.translate(W/2+pan.x, H/2+pan.y);
+  GFX.scale(zoom,zoom);
+
+  // Edges
+  gEdges.forEach(e=>{
+    const a=gNodes[e.a], b=gNodes[e.b];
+    if(!a||!b) return;
+    GFX.strokeStyle='rgba(108,99,255,.22)';
+    GFX.lineWidth=1.2/zoom;
+    GFX.setLineDash([4/zoom,4/zoom]);
+    GFX.beginPath(); GFX.moveTo(a.x,a.y); GFX.lineTo(b.x,b.y); GFX.stroke();
+    GFX.setLineDash([]);
+  });
+
+  // Nodes
+  gNodes.forEach(n=>{
+    const r   = n.self ? 14 : 8;
+    const col = n.self ? '#6c63ff' : (COLORS[n.type]||COLORS.default);
+    const isHov = n===hoveredNode;
+
+    // Halo
+    if(isHov){
+      GFX.beginPath(); GFX.arc(n.x,n.y,r+6,0,Math.PI*2);
+      GFX.fillStyle=col+'33'; GFX.fill();
+    }
+    // Nodo
+    GFX.beginPath(); GFX.arc(n.x,n.y,r,0,Math.PI*2);
+    const grad=GFX.createRadialGradient(n.x-r*.3, n.y-r*.3, r*.1, n.x,n.y,r);
+    grad.addColorStop(0,'#fff'); grad.addColorStop(1,col);
+    GFX.fillStyle=grad; GFX.fill();
+    GFX.strokeStyle=isHov?'#fff':col; GFX.lineWidth=1.5/zoom; GFX.stroke();
+
+    // Label
+    if(zoom>0.5){
+      GFX.fillStyle='rgba(226,226,240,.85)';
+      GFX.font=`${Math.max(9,11/zoom)}px Inter,sans-serif`;
+      GFX.textAlign='center';
+      GFX.fillText(n.label, n.x, n.y+r+13/zoom);
+    }
+  });
+  GFX.restore();
+}
+
+function animateGraph(){
+  applyForces();
+  drawGraph();
+  animId=requestAnimationFrame(animateGraph);
+}
+animateGraph();
+
+// Canvas interaction
+function canvasToWorld(cx,cy){
+  const W=CANVAS.width, H=CANVAS.height;
+  return { x:(cx-W/2-pan.x)/zoom, y:(cy-H/2-pan.y)/zoom };
+}
+function nodeAt(wx,wy){
+  let best=null, bestD=Infinity;
+  gNodes.forEach(n=>{
+    const d=Math.hypot(n.x-wx,n.y-wy);
+    if(d<20/zoom && d<bestD){ bestD=d; best=n; }
+  });
+  return best;
+}
+
+CANVAS.addEventListener('mousemove',e=>{
+  const r=CANVAS.getBoundingClientRect();
+  const cx=e.clientX-r.left, cy=e.clientY-r.top;
+  if(isPanning){ pan.x+=(e.clientX-panStart.x); pan.y+=(e.clientY-panStart.y); panStart={x:e.clientX,y:e.clientY}; return; }
+  if(dragNode){ const w=canvasToWorld(cx,cy); dragNode.x=w.x; dragNode.y=w.y; dragNode.vx=0; dragNode.vy=0; }
+  const w=canvasToWorld(cx,cy);
+  const n=nodeAt(w.x,w.y);
+  hoveredNode=n;
+  if(n){
+    TOOLTIP.style.left=(e.clientX+14)+'px'; TOOLTIP.style.top=(e.clientY-20)+'px';
+    TOOLTIP.style.opacity='1';
+    TOOLTIP.innerHTML=`<strong>${n.label}</strong>Tipo: ${n.type}<br>Latencia: ${n.latency}ms`;
+  } else { TOOLTIP.style.opacity='0'; }
+});
+CANVAS.addEventListener('mousedown',e=>{
+  const r=CANVAS.getBoundingClientRect();
+  const w=canvasToWorld(e.clientX-r.left,e.clientY-r.top);
+  const n=nodeAt(w.x,w.y);
+  if(n){ dragNode=n; }
+  else { isPanning=true; panStart={x:e.clientX,y:e.clientY}; }
+});
+CANVAS.addEventListener('mouseup',()=>{ dragNode=null; isPanning=false; });
+CANVAS.addEventListener('mouseleave',()=>{ dragNode=null; isPanning=false; TOOLTIP.style.opacity='0'; });
+CANVAS.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const factor=e.deltaY>0?0.9:1.1;
+  zoom=Math.min(3,Math.max(0.2,zoom*factor));
+},{ passive:false });
+
+// Botón topología
+document.getElementById('btn-topo').addEventListener('click',()=>{
+  gNodes.forEach(n=>{ if(!n.self){ n.vx=(Math.random()-.5)*30; n.vy=(Math.random()-.5)*30; }});
+  addLog('Topología reorganizada','ok');
+});
+
+// ── Carga inicial de status ────────────────────────────────────────────────
+async function loadStatus(){
+  try{
+    const r=await fetch(API+'/v1/status');
+    const d=await r.json();
+    document.getElementById('node-did').textContent  = d.did||'—';
+    document.getElementById('info-did').textContent  = d.did||'—';
+    document.getElementById('info-role').textContent = d.role||'—';
+    document.getElementById('info-ip').textContent   = d.resolved_ip?.toFixed(0)||'—';
+    document.getElementById('info-ver').textContent  = d.version||'—';
+    if(d.version) document.getElementById('version-badge').textContent = d.version;
+    initSelfNode(d.did, d.role);
+    addLog('Nodo conectado: '+d.did,'ok');
+  } catch(e){
+    addLog('REST API no disponible en '+API,'error');
+  }
+}
+loadStatus();
+
+// ── SSE — Métricas en tiempo real ──────────────────────────────────────────
+let sseSource=null;
+const connDot=document.getElementById('conn-dot');
+
+function connectSSE(){
+  if(sseSource) sseSource.close();
+  sseSource=new EventSource(API+'/v1/metrics/stream');
+  sseSource.onopen=()=>{ connDot.classList.add('live'); addLog('Stream SSE conectado','ok'); };
+  sseSource.onerror=()=>{
+    connDot.classList.remove('live');
+    addLog('Stream SSE desconectado, reintentando…','warn');
+    setTimeout(connectSSE,3000);
+  };
+  sseSource.onmessage=e=>{
+    try{ updateMetrics(JSON.parse(e.data)); } catch(_){}
+  };
+}
+
+function updateMetrics(d){
+  // Paquetes
+  el('val-rx').textContent  = fmtNum(d.packets_rx);
+  el('sub-rx').textContent  = (d.rx_per_sec||0).toFixed(1)+' paq/seg';
+  el('val-tx').textContent  = fmtNum(d.packets_tx);
+  el('sub-tx').textContent  = (d.tx_per_sec||0).toFixed(1)+' paq/seg';
+
+  // Paquetes perdidos
+  const dropped = d.packets_dropped||0;
+  el('val-drop').textContent = fmtNum(dropped);
+  el('sub-drop').textContent = dropped===0 ? 'Sin pérdidas ✓' : 'Pérdidas detectadas';
+  el('card-drop').className  = 'card'+(dropped>0?' alert':'');
+
+  // RS
+  const rs = d.rs_errors||0;
+  el('val-rs').textContent = fmtNum(rs);
+  el('card-rs').className  = 'card'+(rs>10?' warn':'');
+
+  // Latencia predicha
+  const lat  = d.latency_pred_mean||0;
+  const risk = d.latency_risk||0;
+  el('val-lat').textContent = lat.toFixed(1)+' ms';
+  el('sub-lat').textContent = '±'+(d.latency_pred_std||0).toFixed(1)+' ms desv.';
+  el('card-lat').className  = 'card'+(risk>.7?' alert': risk>.4?' warn':'');
+
+  // DHT Budget
+  const used=d.dht_budget_used||0, max=d.dht_budget_max||1;
+  el('val-dht').textContent = used+'/'+max;
+  el('sub-dht').textContent = ((used/max)*100).toFixed(0)+'% usado';
+  el('card-dht').className  = 'card'+(used/max>.9?' alert': used/max>.7?' warn':'');
+
+  // Bytes
+  const totalBytes=(d.bytes_rx||0)+(d.bytes_tx||0);
+  el('val-bytes').textContent = fmtBytes(totalBytes);
+  el('sub-bytes').textContent = '↓'+fmtBytes(d.bytes_rx)+' ↑'+fmtBytes(d.bytes_tx);
+
+  // Peers
+  el('val-peers').textContent = fmtNum(d.peer_count||0);
+  if(d.peers && d.peers.length>0) syncPeers(d.peers);
+
+  // Experto MoE
+  const exp = d.moe_expert||'Latency';
+  const badge = document.getElementById('expert-badge');
+  badge.textContent = '⚡ '+exp;
+  badge.className = 'badge-base' // reset
+  if(exp==='Bulk') badge.className='bulk';
+  else if(exp==='Satellite') badge.className='satellite';
+  else badge.className='';
+  badge.id='expert-badge';
+  el('expert-desc').textContent = expDesc(exp);
+
+  // Barra de riesgo
+  el('risk-bar').style.width = Math.min(100,risk*100).toFixed(0)+'%';
+  el('risk-bar').style.background = risk>.7 ? 'var(--danger)': risk>.4 ? 'var(--warn)':'var(--ok)';
+  el('risk-pct').textContent = (risk*100).toFixed(0)+'% probabilidad de degradación';
+
+  // Peer list
+  if(d.peers){
+    const pl=el('peer-list'); pl.innerHTML='';
+    d.peers.slice(0,12).forEach(p=>{
+      const item=document.createElement('div');
+      item.className='peer-item'; item.textContent=p;
+      item.title='Haz clic para ver detalles de este peer';
+      pl.appendChild(item);
+    });
+  }
+
+  // Sparkline rx
+  pushSpark(sparkData.rx, d.rx_per_sec||0);
+  drawSparkline('spark-rx', sparkData.rx, 'rgba(108,99,255,.8)');
+}
+
+function expDesc(e){
+  if(e==='Bulk') return 'Modo transferencia: maximiza ancho de banda';
+  if(e==='Satellite') return 'Modo satelital: activa ECC Reed-Solomon';
+  return 'Modo latencia: minimiza tiempo de respuesta';
+}
+function el(id){ return document.getElementById(id); }
+
+connectSSE();
+
+// ── Botones de acción ──────────────────────────────────────────────────────
+el('btn-list').addEventListener('click', async()=>{
+  addLog('Solicitando lista de peers…');
+  try{
+    const r=await fetch(API+'/v1/peers');
+    const d=await r.json();
+    addLog('Peers encontrados: '+(d.count||0),'ok');
+    if(d.peers) syncPeers(d.peers);
+  } catch(e){ addLog('Error al listar peers: '+e,'error'); }
+});
+
+el('btn-reset').addEventListener('click', async()=>{
+  addLog('Reseteando métricas…');
+  try{
+    await fetch(API+'/v1/metrics/reset',{method:'POST'});
+    addLog('Métricas reiniciadas a cero','ok');
+  } catch(e){ addLog('Error al resetear: '+e,'error'); }
+});
+
+el('btn-send').addEventListener('click', async()=>{
+  addLog('Enviando paquete de prueba…');
+  try{
+    const r=await fetch(API+'/v1/send',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ did:'did:ipv7:0', payload:'ipv7-ieu-test-ping', priority:true })
+    });
+    const d=await r.json();
+    addLog('Paquete enviado: '+JSON.stringify(d),'ok');
+  } catch(e){ addLog('Error al enviar: '+e,'error'); }
+});
+
+el('btn-export').addEventListener('click', async()=>{
+  try{
+    const r=await fetch(API+'/v1/metrics');
+    const d=await r.json();
+    const a=document.createElement('a');
+    a.href='data:application/json,'+encodeURIComponent(JSON.stringify(d,null,2));
+    a.download='ipv7-metrics-'+Date.now()+'.json';
+    a.click();
+    addLog('Métricas exportadas','ok');
+  } catch(e){ addLog('Error al exportar: '+e,'error'); }
+});
+
+el('btn-log').addEventListener('click',()=>{ logPanel.classList.toggle('open'); });
+
+el('device-select').addEventListener('change',e=>{
+  addLog('Perfil de dispositivo cambiado a: '+e.target.value);
+});
+
+addLog('Dashboard IPv7-IEU inicializado — Conectando a '+API);
+</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+# Ignorar binarios compilados
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Archivos de la terminal y OS
+.DS_Store
+Thumbs.db
+
+# Excepto Wintun para la compilacion
+!core/wintun.dll
+!core/wintun.zip
+
+# Logs y bases temporales
+*.log
+
+# Cripto Post-Cuántica
+.ipv7-pqc/
+*.priv
+*.key
+*.sig
