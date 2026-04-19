@@ -44,10 +44,12 @@ func StartTCPListener(localNode *protocol.Node, port int, handler func(addr prot
 // Formato de framing: [4 bytes longitud big-endian][N bytes payload IEU]
 func handleTCPSession(conn net.Conn, localNode *protocol.Node, handler func(addr protocol.IPv7Address, data []byte)) {
 	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(10 * time.Minute))
 
 	lenBuf := make([]byte, 4)
 	for {
+		// Renovar deadline en cada frame: sesiones largas no se cortan silenciosamente
+		conn.SetDeadline(time.Now().Add(10 * time.Minute))
+
 		if _, err := readFull(conn, lenBuf); err != nil {
 			return
 		}

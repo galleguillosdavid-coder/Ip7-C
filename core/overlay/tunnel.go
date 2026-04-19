@@ -159,19 +159,28 @@ func (t *Tunnel) EnableTCPFallback(handler func(addr protocol.IPv7Address, data 
 
 // startDispatcher orquesta los tres expertos MoE.
 // Siempre prioriza ExpertLatency.
+// Fix: lee RemoteAddr con lock y verifica nil para evitar panic y data race.
 func (t *Tunnel) startDispatcher() {
 	for {
+		var packet []byte
 		select {
 		case p := <-t.PriorityQueue: // Expert Latency siempre primero
-			t.Conn.WriteToUDP(p, t.RemoteAddr)
+			packet = p
 		default:
 			select {
 			case p := <-t.PriorityQueue:
-				t.Conn.WriteToUDP(p, t.RemoteAddr)
+				packet = p
 			case p := <-t.StandardQueue:
-				t.Conn.WriteToUDP(p, t.RemoteAddr)
+				packet = p
 			}
 		}
+		t.mu.RLock()
+		raddr := t.RemoteAddr
+		t.mu.RUnlock()
+		if raddr == nil {
+			continue // RemoteAddr aún no configurado, esperar
+		}
+		t.Conn.WriteToUDP(packet, raddr)
 	}
 }
 
@@ -281,11 +290,12 @@ func (t *Tunnel) Listen(handler func(addr protocol.IPv7Address, data []byte)) {
 		}
 
 		// Actualizar RemoteAddr dinámicamente (soporte para IPs flotantes / LEO satellite)
+		// Fix: lectura y escritura completamente dentro del lock para eliminar data race.
+		t.mu.Lock()
 		if t.RemoteAddr == nil && remoteUDPAddr != nil {
-			t.mu.Lock()
 			t.RemoteAddr = remoteUDPAddr
-			t.mu.Unlock()
 		}
+		t.mu.Unlock()
 
 		// Ignorar paquetes de hole-punch
 		if n == 9 && string(buf[:9]) == "IEU_PUNCH" {

@@ -15,4 +15,5 @@ type NodeInfo struct {
 	Node    *protocol.Node
 	Tunnel  *overlay.Tunnel
 	DHT     *p2p.MicroDHT
+	APIPort int // Puerto de la REST API para WoT descriptor dinámico
 }

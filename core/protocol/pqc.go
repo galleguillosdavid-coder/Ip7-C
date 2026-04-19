@@ -55,7 +55,8 @@ func LoadOrGenerateKeys() error {
 
 func init() {
 	if err := LoadOrGenerateKeys(); err != nil {
-		fmt.Printf("❌ Error crítico PQC: %v\n", err)
+		fmt.Printf("❌ [PQC] Error crítico cargando claves ML-DSA-65: %v\n", err)
+		fmt.Println("⚠️ [PQC] El nodo operará sin firma post-cuántica hasta resolver el error de disco/permisos.")
 	}
 }
 

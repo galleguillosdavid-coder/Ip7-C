@@ -70,7 +70,11 @@ type WoTActionFull struct {
 // Usar con Content-Type: application/td+json (RFC del W3C WoT)
 func GenerateThingDescription(w io.Writer, info *NodeInfo) {
 	now := time.Now().UTC().Format(time.RFC3339)
-	baseURL := "http://127.0.0.1:7780"
+	port := info.APIPort
+	if port == 0 {
+		port = 7780 // fallback al puerto por defecto
+	}
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 
 	td := ThingDescription{
 		Context: []interface{}{

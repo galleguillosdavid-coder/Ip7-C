@@ -82,7 +82,7 @@ func run() error {
 	} else {
 		fmt.Println("🔍 Entrando en la Fase Web3: Sincronización DHT Autónoma...")
 		
-		rand.Seed(time.Now().UnixNano())
+		// rand.Seed eliminado: deprecated desde Go 1.20 (el PRNG global se seedea automáticamente)
 		satID := float64(100 + rand.Intn(900))
 		ipSuffix := 2 + rand.Intn(250)
 		
@@ -241,6 +241,7 @@ func run() error {
 		Node:    localNode,
 		Tunnel:  tunnel,
 		DHT:     microDHT,
+		APIPort: *apiPort, // Para WoT descriptor dinámico
 	}
 	
 	if *role == "master" {
@@ -286,7 +287,6 @@ func run() error {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	<-sigChan
 
-	fmt.Println("\n🛑 Cerrando protocolo IPv7-IEU...")
 	fmt.Println("\n🛑 Cerrando protocolo IPv7-IEU...")
 	if runtime.GOOS == "windows" {
 		exec.Command("netsh", "advfirewall", "firewall", "delete", "rule", "name=IPv7-IEU").Run()

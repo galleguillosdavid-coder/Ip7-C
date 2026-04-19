@@ -117,18 +117,39 @@ func (dht *MicroDHT) handleRPC(msg RPCMessage, addr *net.UDPAddr) {
 	}
 }
 
+// bucketIndex calcula el índice de bucket Kademlia usando distancia XOR.
+// Retorna la posición del bit más significativo en XOR(localID, peerID), rango 0..159.
+// Esto implementa correctamente la estructura de k-buckets del paper Kademlia original.
+func (dht *MicroDHT) bucketIndex(id NodeID) int {
+	for i := 0; i < KeySize; i++ {
+		xor := dht.LocalID[i] ^ id[i]
+		if xor != 0 {
+			for bit := 7; bit >= 0; bit-- {
+				if xor>>uint(bit) != 0 {
+					return i*8 + (7 - bit)
+				}
+			}
+		}
+	}
+	return KeySize*8 - 1
+}
+
 func (dht *MicroDHT) updateBucket(id NodeID, addr *net.UDPAddr) {
+	if id == dht.LocalID {
+		return // No agregar a sí mismo
+	}
 	dht.mu.Lock()
 	defer dht.mu.Unlock()
-	bucket := dht.Buckets[0]
+	idx := dht.bucketIndex(id)
+	bucket := dht.Buckets[idx]
 	for _, p := range bucket {
 		if p.ID == id {
 			p.Addr = addr
 			return
 		}
 	}
-	if len(bucket) < 250 {
-		dht.Buckets[0] = append(bucket, &Peer{ID: id, Addr: addr})
+	if len(bucket) < 20 { // k=20: tamaño estándar de k-bucket Kademlia
+		dht.Buckets[idx] = append(bucket, &Peer{ID: id, Addr: addr})
 	}
 }
 

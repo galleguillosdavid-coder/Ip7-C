@@ -1,8 +1,10 @@
 package overlay
 
 import (
+	"crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"time"
 )
@@ -43,10 +45,14 @@ func querySTUN(serverAddr string) (string, error) {
 	binary.BigEndian.PutUint16(req[2:4], 0)
 	// Magic Cookie: 0x2112A442 (RFC 5389)
 	binary.BigEndian.PutUint32(req[4:8], 0x2112A442)
-	// Transaction ID: 12 bytes aleatorios (simplificado con timestamp)
-	tid := uint64(time.Now().UnixNano())
-	binary.BigEndian.PutUint64(req[8:16], tid)
-	binary.BigEndian.PutUint32(req[16:20], 0xDEADBEEF)
+	// Transaction ID: 12 bytes criptográficamente aleatorios (RFC 5389 §6)
+	// Fix: timestamp no es suficientemente aleatorio; usar crypto/rand
+	if _, err := io.ReadFull(rand.Reader, req[8:20]); err != nil {
+		// Fallback a timestamp si rand falla (extremadamente raro)
+		tid := uint64(time.Now().UnixNano())
+		binary.BigEndian.PutUint64(req[8:16], tid)
+		binary.BigEndian.PutUint32(req[16:20], 0xDEADBEEF)
+	}
 
 	if _, err := conn.Write(req); err != nil {
 		return "", fmt.Errorf("error enviando STUN request: %v", err)

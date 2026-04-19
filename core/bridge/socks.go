@@ -50,8 +50,9 @@ func handleSocks5Connection(client net.Conn, masterTcpAddr string) {
 		return
 	}
 
-	// FALLBACK HTTP PROXY: Detectar "C" (CONNECT google.com:443)
-	if buf[0] == 'C' {
+	// FALLBACK HTTP PROXY: Detectar "CO" de "CONNECT host:port HTTP/1.x"
+	// Fix: verificar 2 bytes para evitar falsos positivos con protocolos que empiezan con 'C'
+	if buf[0] == 'C' && buf[1] == 'O' {
 		// Modo HTTP CONNECT detectado (común cuando los usuarios se confunden y ponen Proxy HTTPS en OS)
 		fmt.Println("⚡ [Proxy] Solicitud HTTP CONNECT detectada (Fallback Automático activado)")
 		// Buscar el Host en la primera linea "CONNECT host:port HTTP/1.1"

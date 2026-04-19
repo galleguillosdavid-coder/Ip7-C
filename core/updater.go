@@ -207,10 +207,19 @@ func selfUpdate(downloadURL, sha256URL, verifyMethod, targetBinaryName string, i
 			return fmt.Errorf("no se encontró hash para el artefacto %s en SHA256SUMS.txt", targetBinaryName)
 		}
 
-		// Calcular el hash del binario descargado
-		binData, _ := os.ReadFile(newExePath)
+		// Calcular el hash del binario descargado con streaming (evita OOM en dispositivos IoT/Edge)
+		binFile, err := os.Open(newExePath)
+		if err != nil {
+			os.Remove(newExePath)
+			return fmt.Errorf("error abriendo binario para verificar: %v", err)
+		}
 		hasher := sha256.New()
-		hasher.Write(binData)
+		if _, err := io.Copy(hasher, binFile); err != nil {
+			binFile.Close()
+			os.Remove(newExePath)
+			return fmt.Errorf("error computando SHA256 en streaming: %v", err)
+		}
+		binFile.Close()
 		actualHash := hex.EncodeToString(hasher.Sum(nil))
 
 		if actualHash != expectedHash {
