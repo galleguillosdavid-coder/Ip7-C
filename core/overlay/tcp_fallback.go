@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/galleguillosdavid-coder/Ip7-IEU/core/protocol"
+	"github.com/galleguillosdavid-coder/Ip7-C/core/protocol"
 )
 
 // TCPFallbackPorts lista de puertos de fallback en orden de prioridad

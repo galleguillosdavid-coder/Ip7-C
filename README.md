@@ -1,7 +1,7 @@
 # 🌐 IPv7-IEU: El Futuro de las Telecomunicaciones Dinámicas
 
-[![Build Status](https://github.com/galleguillosdavid-coder/Ip7-IEU/actions/workflows/release.yml/badge.svg)](https://github.com/galleguillosdavid-coder/Ip7-IEU/actions)
-[![Latest Release](https://img.shields.io/github/v/release/galleguillosdavid-coder/Ip7-IEU)](https://github.com/galleguillosdavid-coder/Ip7-IEU/releases/latest)
+[![Build Status](https://github.com/galleguillosdavid-coder/Ip7-C/actions/workflows/release.yml/badge.svg)](https://github.com/galleguillosdavid-coder/Ip7-C/actions)
+[![Latest Release](https://img.shields.io/github/v/release/galleguillosdavid-coder/Ip7-IEU)](https://github.com/galleguillosdavid-coder/Ip7-C/releases/latest)
 [![Go Version](https://img.shields.io/badge/go-1.22-blue)](go.mod)
 [![License](https://img.shields.io/badge/license-Proprietary-red)]()
 
@@ -34,11 +34,11 @@ Operando como un poderoso *Overlay Network* o software de túnel nativo escalabl
 ### Descarga Directa (Recomendado)
 ```bash
 # Linux x64
-curl -LO https://github.com/galleguillosdavid-coder/Ip7-IEU/releases/latest/download/ipv7-linux-amd64
+curl -LO https://github.com/galleguillosdavid-coder/Ip7-C/releases/latest/download/ipv7-linux-amd64
 chmod +x ipv7-linux-amd64
 
 # Verificar integridad SHA-256
-curl -LO https://github.com/galleguillosdavid-coder/Ip7-IEU/releases/latest/download/SHA256SUMS.txt
+curl -LO https://github.com/galleguillosdavid-coder/Ip7-C/releases/latest/download/SHA256SUMS.txt
 sha256sum -c SHA256SUMS.txt
 ```
 

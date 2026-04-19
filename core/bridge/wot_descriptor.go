@@ -91,7 +91,7 @@ func GenerateThingDescription(w io.Writer, info *NodeInfo) {
 		},
 		Created:  now,
 		Modified: now,
-		Support:  "https://github.com/galleguillosdavid-coder/Ip7-IEU-Releases",
+		Support:  "https://github.com/galleguillosdavid-coder/Ip7-C-Releases",
 		Security: []string{"nosec_sc"},
 		SecurityDef: map[string]interface{}{
 			"nosec_sc": map[string]string{"scheme": "nosec"},

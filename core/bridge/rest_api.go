@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/galleguillosdavid-coder/Ip7-IEU/core/protocol"
+	"github.com/galleguillosdavid-coder/Ip7-C/core/protocol"
 )
 
 //go:embed dashboard.html

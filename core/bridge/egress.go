@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/galleguillosdavid-coder/Ip7-IEU/core/overlay"
-	"github.com/galleguillosdavid-coder/Ip7-IEU/core/protocol"
+	"github.com/galleguillosdavid-coder/Ip7-C/core/overlay"
+	"github.com/galleguillosdavid-coder/Ip7-C/core/protocol"
 )
 
 // egressHTTPClient con timeout para no colgarse indefinidamente en descargas

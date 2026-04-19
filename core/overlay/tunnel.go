@@ -5,7 +5,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/galleguillosdavid-coder/Ip7-IEU/core/protocol"
+	"github.com/galleguillosdavid-coder/Ip7-C/core/protocol"
 )
 
 // ─── MoE Expert Dispatcher (inspirado en Gemma 4 MoE, ia.md §Google Gemma 4) ────────────────

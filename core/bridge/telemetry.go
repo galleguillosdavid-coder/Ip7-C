@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/galleguillosdavid-coder/Ip7-IEU/core/protocol"
+	"github.com/galleguillosdavid-coder/Ip7-C/core/protocol"
 )
 
 // ─── Telemetry Hub (Previsiones.md §Visibilidad End-to-End / interfaz.md §SSE) ──────────────

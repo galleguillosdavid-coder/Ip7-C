@@ -1,4 +1,4 @@
-module github.com/galleguillosdavid-coder/Ip7-IEU
+module github.com/galleguillosdavid-coder/Ip7-C
 
 go 1.22.0
 

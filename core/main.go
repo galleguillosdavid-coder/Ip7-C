@@ -11,11 +11,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/galleguillosdavid-coder/Ip7-IEU/core/adapter"
-	"github.com/galleguillosdavid-coder/Ip7-IEU/core/bridge"
-	"github.com/galleguillosdavid-coder/Ip7-IEU/core/overlay"
-	"github.com/galleguillosdavid-coder/Ip7-IEU/core/p2p"
-	"github.com/galleguillosdavid-coder/Ip7-IEU/core/protocol"
+	"github.com/galleguillosdavid-coder/Ip7-C/core/adapter"
+	"github.com/galleguillosdavid-coder/Ip7-C/core/bridge"
+	"github.com/galleguillosdavid-coder/Ip7-C/core/overlay"
+	"github.com/galleguillosdavid-coder/Ip7-C/core/p2p"
+	"github.com/galleguillosdavid-coder/Ip7-C/core/protocol"
 )
 
 // Version global de IPv7-IEU
