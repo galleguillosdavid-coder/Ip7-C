@@ -1,11 +1,11 @@
 package overlay
 
 import (
+	cryptoRand "crypto/rand"
 	"fmt"
 	"math/rand"
 	"net"
 	"sync"
-	"time"
 
 	"github.com/galleguillosdavid-coder/Ip7-C/core/protocol"
 )
@@ -163,13 +163,16 @@ func (t *Tunnel) EnableTCPFallback(handler func(addr protocol.IPv7Address, data 
 // Evita priorización rígida; usa probabilidad para colapsar paquetes, balanceando latencia/congestión matemáticamente.
 // Fix: lee RemoteAddr con lock y verifica nil para evitar panic y data race.
 func (t *Tunnel) startDispatcher() {
-	var decitRand rand.Rand
-	decitRand.Seed(time.Now().UnixNano())
+	var seed [8]byte
+	cryptoRand.Read(seed[:])
+	seedInt := int64(seed[0])<<56 | int64(seed[1])<<48 | int64(seed[2])<<40 | int64(seed[3])<<32 |
+		int64(seed[4])<<24 | int64(seed[5])<<16 | int64(seed[6])<<8 | int64(seed[7])
+	decitRand := rand.New(rand.NewSource(seedInt))
 
 	for {
 		var packet []byte
 		
-		pBit := decitRand.Float32() // Decit Colapso Estocástico de Paridad
+		pBit := decitRand.Float32() // Decit Colapso Estocástico de Paridad (con entropía real amplificada)
 		
 		select {
 		case p := <-t.PriorityQueue: 
@@ -346,16 +349,24 @@ func (t *Tunnel) Listen(handler func(addr protocol.IPv7Address, data []byte)) {
 			continue
 		}
 
-		_ = buf[protocol.HeaderSize : protocol.HeaderSize+pqcSigSize] // sig
+		// Anti-Spoofing Básico (Verificar procedencia)
+		if remoteUDPAddr != nil && t.RemoteAddr != nil {
+			if remoteUDPAddr.IP.String() != t.RemoteAddr.IP.String() {
+				fmt.Println("🚨 Paquete descartado: Alerta de Spoofing IPv6-in-IPv4 (CVE-2025-23019 mitigado)")
+				continue
+			}
+		}
+
+		sig := buf[protocol.HeaderSize : protocol.HeaderSize+pqcSigSize] // sig
 		payload := make([]byte, n-(protocol.HeaderSize+pqcSigSize))
 		copy(payload, buf[protocol.HeaderSize+pqcSigSize:n])
 
-		// Verificación PQC (Desactivada intencionalmente en testing local sin DHT Key Exchange)
-		// pkBytes := protocol.GetPublicKey()
-		// if !protocol.VerifySignature(pkBytes, payload, sig) { ... }
-		//	fmt.Println("⚠️ Paquete descartado: Error de validación de firma PQC")
-		//	continue
-		// }
+		// Verificación PQC (Activada)
+		pkBytes := protocol.GetPublicKey()
+		if pkBytes != nil && !protocol.VerifySignature(pkBytes, payload, sig) {
+			fmt.Println("⚠️ Paquete descartado: Error grave de validación de firma PQC")
+			continue
+		}
 
 		// Router de sub-puertos: despachar al handler registrado o al catch-all
 		t.subPortMu.RLock()

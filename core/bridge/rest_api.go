@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os/exec"
+	"runtime"
 	"time"
 
 	"github.com/galleguillosdavid-coder/Ip7-C/core/protocol"
@@ -83,7 +85,17 @@ func StartRESTAPI(info *NodeInfo, port int) {
 	})
 
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	fmt.Printf("🖥️  [Dashboard] Abre en navegador: http://%s\n", addr)
+	url := "http://" + addr
+	fmt.Printf("🖥️  [Dashboard] Abre en navegador: %s\n", url)
+	
+	// Abrir automáticamente la URL del Dashboard en el navegador por defecto
+	if runtime.GOOS == "windows" {
+		exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	} else if runtime.GOOS == "darwin" {
+		exec.Command("open", url).Start()
+	} else {
+		exec.Command("xdg-open", url).Start()
+	}
 
 	srv := &http.Server{
 		Addr:         addr,

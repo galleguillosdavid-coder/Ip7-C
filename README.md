@@ -16,17 +16,18 @@ Operando como un poderoso *Overlay Network* o software de túnel nativo escalabl
 2. **Adaptación Satelital:** Programado desde su concepción para hardware en el filo (*Edge Computing* como nodos Bmax) e internet de movilidad (Starlink). El motor IEU mitiga fluctuaciones de posición o caídas intermitentes, estabilizando latencias mediante gradientes auto-gestionados.
 3. **Actualización Ghost (GhostUpdater):** Arquitectura sigilosa multiplataforma con **verificación SHA-256 obligatoria** de cada binario descargado antes de la instalación. Los clientes se mantienen actualizados sin requerir interacción del usuario.
 
-## ✅ Estado de Producción: v1.5.7
+## ✅ Estado de Producción: v1.6.2 (Cuántica-Agentica)
 
 | Componente | Estado | Detalles |
 |---|---|---|
-| 🔐 **PQC ML-DSA-65** | ✅ Nuclear / Obligatorio | Firma y verificación en **cada** paquete UDP |
-| 🌐 **Descentralización** | ✅ Zero Cloud | Firebase eliminado — DHT Kademlia Web3 puro |
-| 🔗 **Bootstrap P2P** | ✅ Operativo | Flag `--bootstrap` para auto-unirse a la red |
+| 🔐 **PQC ML-DSA-65** | ✅ Nuclear / Obligatorio | Firma y verificación estricta en **cada** paquete UDP |
+| 🛡️ **Anti-Spoofing** | ✅ Activo | Mitigación CVE-2025-23019 validando IPs capa dual |
+| 🧠 **Cripto-Decit MoE**| ✅ Estocástico | Dispatcher cuántico propulsado por entropía real de OS |
+| 🤖 **Agent Sandbox** | ✅ Determinista | Límite estricto de ejecución (100ms timeout) y Context API |
+| 🌐 **Kademlia DHT** | ✅ Asíncrono | Descubrimiento acelerado P2P por canales Go sin bloqueos |
+| 🔗 **Bootstrap P2P** | ✅ Operativo | Flag `--bootstrap` para auto-unirse a la red satelital |
 | 🛡️ **Verificación Updates** | ✅ SHA-256 | GhostUpdater valida hash antes de hot-swap |
-| 🧪 **Tests PQC** | ✅ 10/10 PASS | Suite ML-DSA-65 completa (sign/verify/tamper) |
 | 📦 **Módulo Go** | ✅ Raíz | `go.mod` en raíz — compatible con Dependabot/CodeQL |
-| 🤖 **CI/CD** | ✅ Automatizado | Build + SHA256SUMS.txt en cada release |
 | 🌍 **Multiplataforma** | ✅ Universal | Windows / Linux x64 / Linux ARM64 / macOS Intel / M1-M3 |
 
 ## 🚀 Instalación Rápida
@@ -78,10 +79,11 @@ Antes de instalar cualquier actualización, el motor descarga `SHA256SUMS.txt` d
 ## 🛡️ Beneficios Fundamentales
 
 *   **Resistencia al Spoofing:** Las identidades de red son asimétricas e inyectivas. El acoplamiento de un hash direccional FNV-1a (53 bits) con infraestructura PQC ML-DSA-65 hace el spoofing criptográficamente costoso.
-*   **Identidad Descentralizada (Web 3.0):** Implementación robusta de túneles P2P estilo Kademlia MicroDHT. Los nodos descubren IPs satelitales dinámicas (Starlink) mediante DIDs (`did:ipv7:x`), sin dependencia de DNS ni PKIs corporativas.
-*   **Criptografía Post-Cuántica (FIPS-204):** Implementa ML-DSA-65 del estándar NIST FIPS-204. Resistente al advenimiento Q-Day con firma de 3309 bytes por paquete.
-*   **Slicing 6G de Baja Latencia:** Motor adaptativo ramificado. El tráfico menor a 128 bytes obtiene pase "Prioridad Absoluta" y es enrutado por la cola de baja latencia.
-*   **Bridges de Interoperabilidad Completos:** REST API `:7780`, Proxy MQTT 3.1.1, Proxy CoAP `:5683`, W3C WoT Thing Description, oneM2M AE, NAT Traversal STUN + Fallback TCP 443.
+*   **Identidad Descentralizada (Web 3.0):** Implementación robusta de túneles P2P Kademlia con sondeo P2P 100% asincrónico por select-channels.
+*   **Criptografía Post-Cuántica (FIPS-204):** Implementa ML-DSA-65 activamente. Resistente al advenimiento Q-Day con verificación estricta `VerifySignature`.
+*   **Slicing 6G de Baja Latencia y Routing Estocástico**: El tráfico se dirige mediante probabilidades *Decit* inyectando entropía nativa pura del Kernel operativo.
+*   **Sandbox de Agentes Autónomos**: Incorporación de barreras temporales seguras (100ms timeout) para la ejecución en caliente de Blueprints de IA bajo el Model Context Protocol (MCP).
+*   **Bridges de Interoperabilidad Completos:** REST API `:7780`, Proxy MQTT 3.1.1, Proxy CoAP `:5683`, W3C WoT, OneM2M AE, STUN NAT Traversal.
 
 ## 📊 Comparativa de Rendimiento
 

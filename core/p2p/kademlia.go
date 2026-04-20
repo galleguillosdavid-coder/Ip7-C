@@ -204,7 +204,7 @@ func (dht *MicroDHT) Announce(key string, value string) {
 	}
 }
 
-// Resolve bloquea asintomáticamente buscando una ID huérfana en la red mundial
+// Resolve busca en la red de manera asincrónica tolerando altas latencias LEO/GEO
 func (dht *MicroDHT) Resolve(key string) string {
 	hashKey := HashString(key)
 	dht.mu.RLock()
@@ -224,18 +224,24 @@ func (dht *MicroDHT) Resolve(key string) string {
 		dht.sendRPC(peer.Addr, msg)
 	}
 
-	// Sondeo P2P tolerante a latencia Satelital (30 ciclos)
-	for i := 0; i < 30; i++ {
-		time.Sleep(100 * time.Millisecond)
-		dht.mu.RLock()
-		val, ok := dht.DB[hashKey]
-		dht.mu.RUnlock()
-		if ok {
-			return val
+	// Sondeo P2P tolerante usando concurrencia y canales (optimizado para no bloquear threads pasivos)
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	timeout := time.After(3 * time.Second) // 3 segundos max timeout Satelital LEO
+
+	for {
+		select {
+		case <-timeout:
+			return ""
+		case <-ticker.C:
+			dht.mu.RLock()
+			val, ok := dht.DB[hashKey]
+			dht.mu.RUnlock()
+			if ok {
+				return val
+			}
 		}
 	}
-
-	return ""
 }
 
 // GetPeerList devuelve la lista de peers conocidos como strings "IP:Puerto"

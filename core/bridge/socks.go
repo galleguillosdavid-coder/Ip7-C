@@ -7,6 +7,21 @@ import (
 	"net"
 )
 
+// telemetryWriter envuelve un io.Writer para notificar los bytes escritos en tiempo real
+// sin esperar a que la conexión TCP finalice (lo que impedía actualizar el dashboard).
+type telemetryWriter struct {
+	w  io.Writer
+	cb func(int64)
+}
+
+func (tw *telemetryWriter) Write(p []byte) (int, error) {
+	n, err := tw.w.Write(p)
+	if n > 0 && tw.cb != nil {
+		tw.cb(int64(n))
+	}
+	return n, err
+}
+
 // Constantes SOCKS5
 const (
 	socks5Version = 0x05
@@ -97,13 +112,11 @@ func handleSocks5Connection(client net.Conn, masterTcpAddr string) {
 		fmt.Printf("🚇 [HTTP-IPv7] Abriendo tunel hacia Internet via Maestro: %s\n", targetAddress)
 		errc := make(chan error, 2)
 		go func() {
-			n, err := io.Copy(quantumConn, client)
-			GlobalTelemetry.BytesSent.Add(n)
+			_, err := io.Copy(&telemetryWriter{w: quantumConn, cb: func(n int64) { GlobalTelemetry.BytesSent.Add(n) }}, client)
 			errc <- err
 		}()
 		go func() {
-			n, err := io.Copy(client, quantumConn)
-			GlobalTelemetry.BytesReceived.Add(n)
+			_, err := io.Copy(&telemetryWriter{w: client, cb: func(n int64) { GlobalTelemetry.BytesReceived.Add(n) }}, quantumConn)
 			errc <- err
 		}()
 		<-errc
@@ -209,13 +222,11 @@ func handleSocks5Connection(client net.Conn, masterTcpAddr string) {
 	
 	errc := make(chan error, 2)
 	go func() {
-		n, err := io.Copy(quantumConn, client)
-		GlobalTelemetry.BytesSent.Add(n) // Telemetria outgoing
+		_, err := io.Copy(&telemetryWriter{w: quantumConn, cb: func(n int64) { GlobalTelemetry.BytesSent.Add(n) }}, client)
 		errc <- err
 	}()
 	go func() {
-		n, err := io.Copy(client, quantumConn)
-		GlobalTelemetry.BytesReceived.Add(n) // Telemetria incoming
+		_, err := io.Copy(&telemetryWriter{w: client, cb: func(n int64) { GlobalTelemetry.BytesReceived.Add(n) }}, quantumConn)
 		errc <- err
 	}()
 
