@@ -49,13 +49,18 @@ sha256sum -c SHA256SUMS.txt
 ### Uso
 ```bash
 # Modo Master (primer nodo de la red) - Requiere Admin en Windows
-./ipv7-linux-amd64 --role master --port 7778 --api-port 7781
+./ipv7-linux-amd64 --role master --port 7778 --api-port 7781 --sub-port 0
 
 # Modo Nodo (unirse a red existente vía Bootstrap P2P)
-./ipv7-linux-amd64 --role node --bootstrap 192.168.0.100:8778 --remote 192.168.0.1 --port 7779 --remote-port 7778
+./ipv7-linux-amd64 --role node --bootstrap 192.168.0.100:8778 --remote 192.168.0.1 --port 7779 --remote-port 7778 --sub-port 1
 
 # Con todos los flags
-./ipv7-linux-amd64 --role node --remote 192.168.0.1 --port 7779 --remote-port 7778 --update-verify sha256 --tun=true
+./ipv7-linux-amd64 --role node --remote 192.168.0.1 --port 7779 --remote-port 7778 --sub-port 1 --update-verify sha256 --tun=true
+
+# Múltiples instancias (usar sub-puertos diferentes para aislamiento)
+./ipv7-linux-amd64 --role master --port 7778 --api-port 7781 --sub-port 0  # Instancia 1
+./ipv7-linux-amd64 --role node --port 7779 --api-port 7782 --sub-port 1    # Instancia 2
+./ipv7-linux-amd64 --role node --port 7780 --api-port 7783 --sub-port 2    # Instancia 3
 
 # Test de Contabilidad Masiva
 ./ipv7-linux-amd64 --test-accounting archivo.xlsx

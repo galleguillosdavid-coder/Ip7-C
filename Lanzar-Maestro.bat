@@ -8,5 +8,5 @@ echo.
 echo Este nodo actuara como salida a Internet para los satelites.
 echo Requiere ejecutar como Administrador.
 echo.
-ipv7.exe --role master --port 7778 --api-port 7781 --tun=true
+ipv7.exe --role master --port 7778 --api-port 7781 --tun=true --sub-port 0
 pause
