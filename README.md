@@ -46,7 +46,17 @@ curl -LO https://github.com/galleguillosdavid-coder/Ip7-C/releases/latest/downlo
 sha256sum -c SHA256SUMS.txt
 ```
 
-### Uso
+### Compilación desde Fuente
+```bash
+git clone https://github.com/galleguillosdavid-coder/Ip7-C.git
+cd Ip7-C
+go build -o ipv7 core/main.go core/security_$(uname -s | tr '[:upper:]' '[:lower:]').go core/embed_$(uname -s | tr '[:upper:]' '[:lower:]').go core/updater.go
+```
+
+### Distribución Automática
+Los releases se generan automáticamente vía GitHub Actions al crear tags `v*` o manualmente desde Actions. Incluye binarios para todas las plataformas y la UI Electron.
+
+## Uso
 ```bash
 # Modo Master (primer nodo de la red) - Requiere Admin en Windows
 ./ipv7-linux-amd64 --role master --port 7778 --api-port 7781 --sub-port 0
@@ -163,6 +173,12 @@ ipv7-ieu/
 ├── *.bat / *.ps1          # Scripts de lanzamiento
 └── README.md
 ```
+
+## 📚 Recursos Adicionales
+
+- **[Cómic Explicativo](COMIC.md)**: Una historia visual del nacimiento de IPv7-IEU
+- **[Arquitectura Detallada](docs/)**: Documentación técnica completa
+- **[UI Moderna](ui/)**: Interfaz React con diseño cyberpunk
 
 ---
 
