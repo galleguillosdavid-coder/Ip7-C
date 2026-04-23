@@ -10,6 +10,13 @@ import (
 	"github.com/galleguillosdavid-coder/Ip7-C/core/protocol"
 )
 
+// Buffer pool for resonance optimization - reduces GC pressure
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 0, 4096)
+	},
+}
+
 // ─── MoE Expert Dispatcher (inspirado en Gemma 4 MoE, ia.md §Google Gemma 4) ────────────────
 // En lugar de un dispatcher nico con dos colas, el túnel activa dinámicamente
 // uno de tres "expertos" de transmisión según las características del paquete:
@@ -24,9 +31,9 @@ import (
 type moeExpertKind int
 
 const (
-	ExpertLatency  moeExpertKind = iota // Paquetes pequeños / control
-	ExpertBulk                         // Transferencias grandes
-	ExpertSatellite                    // Alta latencia / enlace LEO
+	ExpertLatency   moeExpertKind = iota // Paquetes pequeños / control
+	ExpertBulk                           // Transferencias grandes
+	ExpertSatellite                      // Alta latencia / enlace LEO
 )
 
 // selectExpert elige el experto correcto según tamaño del payload y el perfil del dispositivo.
@@ -95,7 +102,7 @@ func NewTunnel(localNode *protocol.Node, localPort int, remoteIP string, remoteP
 		PriorityQueue:   make(chan []byte, 1024),
 		StandardQueue:   make(chan []byte, 1024),
 		subPortHandlers: make(map[uint16]SubPortHandler),
-		deviceProfile:  protocol.GetDeviceProfile(protocol.DeviceUnknown), // Perfil por defecto
+		deviceProfile:   protocol.GetDeviceProfile(protocol.DeviceUnknown), // Perfil por defecto
 	}
 
 	go t.startDispatcher()
@@ -171,11 +178,11 @@ func (t *Tunnel) startDispatcher() {
 
 	for {
 		var packet []byte
-		
+
 		pBit := decitRand.Float32() // Decit Colapso Estocástico de Paridad (con entropía real amplificada)
-		
+
 		select {
-		case p := <-t.PriorityQueue: 
+		case p := <-t.PriorityQueue:
 			// En un router clásico aquí se enruta directo. En Decit, interferencia probabilística:
 			if pBit > 0.1 || len(t.StandardQueue) == 0 { // 90% certidumbre cuántica
 				packet = p
@@ -286,15 +293,15 @@ func (t *Tunnel) SendSubPort(remote protocol.IPv7Address, subPort uint16, payloa
 	if t.Conn == nil {
 		return fmt.Errorf("conexion cerrada")
 	}
-	
+
 	// Solo sabemos el IP / DNS, rutear via IP overlay (simplificado para P2P 1-a-1 actual)
 	packet := buildPacket(t.LocalNode.Address, subPort, payload)
-	
+
 	destAddr := t.RemoteAddr
 	if destAddr == nil {
 		return fmt.Errorf("remote endpoint desconocido")
 	}
-	
+
 	_, err := t.Conn.WriteToUDP(packet, destAddr)
 	return err
 }
@@ -303,7 +310,14 @@ func (t *Tunnel) SendSubPort(remote protocol.IPv7Address, subPort uint16, payloa
 // Formato esperado: [10B Header][3309B PQC sig][Payload]
 func (t *Tunnel) Listen(handler func(addr protocol.IPv7Address, data []byte)) {
 	const pqcSigSize = 3309 // mldsa65.SignatureSize
-	buf := make([]byte, 65535)
+	buf := bufferPool.Get().([]byte)
+	defer bufferPool.Put(buf)
+	if cap(buf) < 65535 {
+		buf = make([]byte, 65535)
+		bufferPool.Put(buf)
+		buf = bufferPool.Get().([]byte)
+	}
+	buf = buf[:65535]
 	for {
 		n, remoteUDPAddr, err := t.Conn.ReadFromUDP(buf)
 		if err != nil {
@@ -358,7 +372,14 @@ func (t *Tunnel) Listen(handler func(addr protocol.IPv7Address, data []byte)) {
 		}
 
 		sig := buf[protocol.HeaderSize : protocol.HeaderSize+pqcSigSize] // sig
-		payload := make([]byte, n-(protocol.HeaderSize+pqcSigSize))
+		payloadSize := n - (protocol.HeaderSize + pqcSigSize)
+		payload := bufferPool.Get().([]byte)
+		if cap(payload) < payloadSize {
+			payload = make([]byte, payloadSize)
+		} else {
+			payload = payload[:payloadSize]
+		}
+		copy(payload, buf[protocol.HeaderSize+pqcSigSize:n])
 		copy(payload, buf[protocol.HeaderSize+pqcSigSize:n])
 
 		// Verificación PQC (Activada)

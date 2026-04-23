@@ -6,6 +6,7 @@ echo        Iniciando IPv7-IEU (Gateway Maestro)
 echo ========================================================
 echo.
 echo Este nodo actuara como salida a Internet para los satelites.
+echo Requiere ejecutar como Administrador.
 echo.
-ipv7-c.exe -role master -port 7777 -api-port 7780 -tun=false
+ipv7.exe --role master --port 7778 --api-port 7781 --tun=true
 pause

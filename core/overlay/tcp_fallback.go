@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/galleguillosdavid-coder/Ip7-C/core/protocol"
@@ -79,7 +80,7 @@ func handleTCPSession(conn net.Conn, localNode *protocol.Node, handler func(addr
 // Prueba los puertos de camouflage en orden hasta encontrar uno accesible.
 func ConnectTCPFallback(remoteHost string) (*TCPSession, error) {
 	for _, port := range TCPFallbackPorts {
-		addr := fmt.Sprintf("%s:%d", remoteHost, port)
+		addr := net.JoinHostPort(remoteHost, strconv.Itoa(port))
 		conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
 		if err != nil {
 			continue
