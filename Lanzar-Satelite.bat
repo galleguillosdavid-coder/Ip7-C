@@ -10,9 +10,9 @@ reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v Pr
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyEnable /t REG_DWORD /d 1 /f >nul
 
 echo Conectando al Maestro local y abriendo Proxy SOCKS5 en puerto 1080...
-echo Requiere ejecutar como Administrador.
+echo Modo Proxy (sin TUN, no requiere Admin).
 echo.
-ipv7.exe --role node --port 7779 --api-port 7782 --tun=true --bootstrap 127.0.0.1:8778 --remote 127.0.0.1 --remote-port 7778 --sub-port 1
+ipv7.exe --role node --port 7779 --api-port 7782 --tun=false --bootstrap 127.0.0.1:8778 --remote 127.0.0.1 --remote-port 7778 --sub-port 1
 
 echo.
 echo Desactivando Proxy de Windows (Restaurando conexion normal)...

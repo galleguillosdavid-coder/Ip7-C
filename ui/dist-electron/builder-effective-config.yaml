@@ -1,0 +1,15 @@
+directories:
+  output: dist-electron
+  buildResources: build
+appId: com.fluxvpn.ipv7
+productName: FluxVPN IPv7
+files:
+  - filter:
+      - dist/**/*
+      - electron.js
+win:
+  target: zip
+  icon: public/icon.ico
+  forceCodeSigning: false
+publish: null
+electronVersion: 41.3.0
