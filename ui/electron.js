@@ -17,7 +17,7 @@ function createWindow() {
   win.loadURL('http://localhost:5173'); // Cargar desde Vite dev server
 
   // En producción, cargar el build
-  // win.loadFile(path.join(__dirname, 'dist', 'index.html'));
+  win.loadFile(path.join(__dirname, 'dist', 'index.html'));
 }
 
 app.whenReady().then(createWindow);

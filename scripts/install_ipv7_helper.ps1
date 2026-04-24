@@ -1,8 +1,10 @@
 #Requires -RunAsAdministrator
 
 $src = Join-Path $PSScriptRoot '..\ipv7.exe' | Resolve-Path -ErrorAction Stop
+$uiSrc = Join-Path $PSScriptRoot '..\ui'
 $dstDir = Join-Path $env:LOCALAPPDATA 'Programs\IPv7'
 $dst = Join-Path $dstDir 'ipv7.exe'
+$uiDst = Join-Path $dstDir 'ui'
 $bat = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup\Start-IPv7-IEU.bat'
 
 if (-not (Test-Path $src)) {
@@ -13,14 +15,23 @@ if (-not (Test-Path $src)) {
 New-Item -ItemType Directory -Force -Path $dstDir | Out-Null
 Copy-Item -Path $src -Destination $dst -Force
 
+# Copiar UI
+if (Test-Path $uiSrc) {
+    Copy-Item -Path $uiSrc -Destination $uiDst -Recurse -Force
+}
+
 $lines = @(
     '@echo off',
     "cd /d `"$dstDir`"",
-    "start `"IPv7-IEU`" `"$dst`" --role master --port 7778 --api-port 7781 --tun=true"
+    "start `"IPv7-IEU`" `"$dst`" --role master --port 7778 --api-port 7781 --tun=false",
+    "timeout /t 2 /nobreak > nul",
+    "cd ui",
+    'start "" "C:\Users\David\AppData\Local\Programs\IPv7\ui\node_modules\.bin\electron.cmd" electron.js'
 )
 Set-Content -Path $bat -Value $lines -Encoding ASCII
 
 Write-Output "Installed: $dst"
+Write-Output "UI Installed: $uiDst"
 Write-Output "Startup: $bat"
 Get-Item $dst | Select-Object FullName,Length,LastWriteTime
 Get-Content $bat
