@@ -1,0 +1,1 @@
+Start-Process -Verb RunAs -FilePath "C:\Users\David\AppData\Local\Programs\IPv7\ipv7.exe" -ArgumentList "--role master --port 7778 --api-port 7781 --tun=true"

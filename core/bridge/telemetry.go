@@ -19,6 +19,8 @@ import (
 // TelemetryHub acumula métricas en tiempo real del nodo y las sirve vía SSE a cualquier
 // dashboard conectado. Los contadores son atómicos para ser seguros en goroutines.
 
+const maxTelemetrySubscribers = 100
+
 // TelemetryHub es el registro centralizado de métricas del nodo.
 type TelemetryHub struct {
 	mu sync.RWMutex
@@ -32,9 +34,9 @@ type TelemetryHub struct {
 	BytesSent        atomic.Int64
 
 	// Estado del MoE Dispatcher
-	ActiveExpert    atomic.Int32 // 0=Latency 1=Bulk 2=Satellite
-	DHTBudgetUsed   atomic.Int32
-	DHTBudgetMax    atomic.Int32
+	ActiveExpert  atomic.Int32 // 0=Latency 1=Bulk 2=Satellite
+	DHTBudgetUsed atomic.Int32
+	DHTBudgetMax  atomic.Int32
 
 	// Predicción de latencia Fokker-Planck
 	LatencyPredMean   float64
@@ -51,6 +53,12 @@ type TelemetryHub struct {
 	RxPerSec   float64
 	TxPerSec   float64
 
+	// Caché de snapshot JSON para reducir serialización frecuente
+	cachedJSON    []byte
+	jsonCacheMu   sync.Mutex
+	lastCacheTime time.Time
+	cacheMaxAge   time.Duration
+
 	// Canal para notificar a clientes SSE
 	subscribers map[chan []byte]struct{}
 	subMu       sync.Mutex
@@ -58,16 +66,21 @@ type TelemetryHub struct {
 
 // GlobalTelemetry es el hub singleton accesible desde cualquier módulo.
 var GlobalTelemetry = &TelemetryHub{
-	subscribers: make(map[chan []byte]struct{}),
-	lastWindow:  time.Now(),
+	subscribers:   make(map[chan []byte]struct{}),
+	lastWindow:    time.Now(),
+	lastCacheTime: time.Now(),
+	cacheMaxAge:   50 * time.Millisecond,
 }
 
 // Subscribe registra un canal para recibir eventos SSE.
 func (h *TelemetryHub) Subscribe() chan []byte {
-	ch := make(chan []byte, 32)
 	h.subMu.Lock()
+	defer h.subMu.Unlock()
+	if len(h.subscribers) >= maxTelemetrySubscribers {
+		return nil
+	}
+	ch := make(chan []byte, 32)
 	h.subscribers[ch] = struct{}{}
-	h.subMu.Unlock()
 	return ch
 }
 
@@ -81,8 +94,8 @@ func (h *TelemetryHub) Unsubscribe(ch chan []byte) {
 
 // Publish serializa las métricas actuales y las envía a todos los suscriptores SSE.
 func (h *TelemetryHub) Publish() {
-	h.mu.Lock()
 	now := time.Now()
+	h.mu.Lock()
 	elapsed := now.Sub(h.lastWindow).Seconds()
 	if elapsed > 0 {
 		rxNow := h.PacketsReceived.Load()
@@ -93,39 +106,18 @@ func (h *TelemetryHub) Publish() {
 		h.prevTx = txNow
 		h.lastWindow = now
 	}
-	snapshot := map[string]interface{}{
-		"ts":                 now.UTC().Format(time.RFC3339Nano),
-		"packets_rx":         h.PacketsReceived.Load(),
-		"packets_tx":         h.PacketsSent.Load(),
-		"packets_dropped":    h.PacketsDropped.Load(),
-		"rs_errors":          h.RSErrorsDetected.Load(),
-		"bytes_rx":           h.BytesReceived.Load(),
-		"bytes_tx":           h.BytesSent.Load(),
-		"rx_per_sec":         h.RxPerSec,
-		"tx_per_sec":         h.TxPerSec,
-		"moe_expert":         expertName(int(h.ActiveExpert.Load())),
-		"dht_budget_used":    h.DHTBudgetUsed.Load(),
-		"dht_budget_max":     h.DHTBudgetMax.Load(),
-		"latency_pred_mean":  h.LatencyPredMean,
-		"latency_pred_std":   h.LatencyPredStdDev,
-		"latency_risk":       h.LatencyRisk,
-		"peers":              h.PeerAddrs,
-		"peer_count":         len(h.PeerAddrs),
-	}
 	h.mu.Unlock()
 
-	b, _ := json.Marshal(snapshot)
-	msg := append([]byte("data: "), b...)
-	msg = append(msg, '\n', '\n')
-
-	h.subMu.Lock()
-	for ch := range h.subscribers {
-		select {
-		case ch <- msg:
-		default: // canal lleno, descartar (evita bloqueo)
-		}
+	h.jsonCacheMu.Lock()
+	if now.Sub(h.lastCacheTime) > h.cacheMaxAge || len(h.cachedJSON) == 0 {
+		h.cachedJSON = h.buildSnapshot()
+		h.lastCacheTime = now
 	}
-	h.subMu.Unlock()
+	msg := append([]byte("data: "), h.cachedJSON...)
+	msg = append(msg, '\n', '\n')
+	h.jsonCacheMu.Unlock()
+
+	h.broadcast(msg)
 }
 
 // StartPublishLoop publica métricas cada segundo en background.
@@ -135,6 +127,72 @@ func (h *TelemetryHub) StartPublishLoop() {
 			h.Publish()
 		}
 	}()
+}
+
+func (h *TelemetryHub) buildSnapshot() []byte {
+	h.mu.RLock()
+	snapshot := map[string]interface{}{
+		"ts":                time.Now().UTC().Format(time.RFC3339Nano),
+		"packets_rx":        h.PacketsReceived.Load(),
+		"packets_tx":        h.PacketsSent.Load(),
+		"packets_dropped":   h.PacketsDropped.Load(),
+		"rs_errors":         h.RSErrorsDetected.Load(),
+		"bytes_rx":          h.BytesReceived.Load(),
+		"bytes_tx":          h.BytesSent.Load(),
+		"rx_per_sec":        h.RxPerSec,
+		"tx_per_sec":        h.TxPerSec,
+		"moe_expert":        expertName(int(h.ActiveExpert.Load())),
+		"dht_budget_used":   h.DHTBudgetUsed.Load(),
+		"dht_budget_max":    h.DHTBudgetMax.Load(),
+		"latency_pred_mean": h.LatencyPredMean,
+		"latency_pred_std":  h.LatencyPredStdDev,
+		"latency_risk":      h.LatencyRisk,
+		"peers":             h.PeerAddrs,
+		"peer_count":        len(h.PeerAddrs),
+		"metrics_cascade": map[string]interface{}{
+			"a": map[string]interface{}{
+				"peer_count":        len(h.PeerAddrs),
+				"moe_expert":        expertName(int(h.ActiveExpert.Load())),
+				"latency_pred_mean": h.LatencyPredMean,
+				"latency_risk":      h.LatencyRisk,
+			},
+			"b": map[string]interface{}{
+				"bytes_rx":   h.BytesReceived.Load(),
+				"bytes_tx":   h.BytesSent.Load(),
+				"rx_per_sec": h.RxPerSec,
+				"tx_per_sec": h.TxPerSec,
+			},
+			"c": map[string]interface{}{
+				"packets_dropped": h.PacketsDropped.Load(),
+				"rs_errors":       h.RSErrorsDetected.Load(),
+				"dht_budget_used": h.DHTBudgetUsed.Load(),
+				"dht_budget_max":  h.DHTBudgetMax.Load(),
+			},
+		},
+	}
+	h.mu.RUnlock()
+	b, _ := json.Marshal(snapshot)
+	return b
+}
+
+func (h *TelemetryHub) broadcast(msg []byte) {
+	h.subMu.Lock()
+	subs := make([]chan []byte, 0, len(h.subscribers))
+	for ch := range h.subscribers {
+		subs = append(subs, ch)
+	}
+	h.subMu.Unlock()
+
+	for _, ch := range subs {
+		ch := ch
+		go func() {
+			select {
+			case ch <- msg:
+			case <-time.After(10 * time.Millisecond):
+				// Subscriber lento, ignorar esta iteración
+			}
+		}()
+	}
 }
 
 // SetLatencyPrediction actualiza la predicción de Fokker-Planck.
@@ -177,13 +235,17 @@ func handleMetricsSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ch := GlobalTelemetry.Subscribe()
+	if ch == nil {
+		http.Error(w, "Telemetry subscription limit reached", http.StatusServiceUnavailable)
+		return
+	}
+	defer GlobalTelemetry.Unsubscribe(ch)
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no") // Para nginx proxies
-
-	ch := GlobalTelemetry.Subscribe()
-	defer GlobalTelemetry.Unsubscribe(ch)
 
 	// Enviar evento inicial inmediatamente
 	fmt.Fprintf(w, "event: connected\ndata: {\"msg\":\"IPv7-IEU Telemetry Stream activo\"}\n\n")
@@ -225,6 +287,26 @@ func handleMetricsSnapshot(w http.ResponseWriter, _ *http.Request) {
 		"latency_pred_mean": h.LatencyPredMean,
 		"latency_risk":      h.LatencyRisk,
 		"peer_count":        len(h.PeerAddrs),
+		"metrics_cascade": map[string]interface{}{
+			"a": map[string]interface{}{
+				"peer_count":        len(h.PeerAddrs),
+				"moe_expert":        expertName(int(h.ActiveExpert.Load())),
+				"latency_pred_mean": h.LatencyPredMean,
+				"latency_risk":      h.LatencyRisk,
+			},
+			"b": map[string]interface{}{
+				"bytes_rx":   h.BytesReceived.Load(),
+				"bytes_tx":   h.BytesSent.Load(),
+				"rx_per_sec": h.RxPerSec,
+				"tx_per_sec": h.TxPerSec,
+			},
+			"c": map[string]interface{}{
+				"packets_dropped": h.PacketsDropped.Load(),
+				"rs_errors":       h.RSErrorsDetected.Load(),
+				"dht_budget_used": h.DHTBudgetUsed.Load(),
+				"dht_budget_max":  h.DHTBudgetMax.Load(),
+			},
+		},
 	}
 	h.mu.RUnlock()
 	jsonResponse(w, data, http.StatusOK)

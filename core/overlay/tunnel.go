@@ -5,17 +5,35 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/galleguillosdavid-coder/Ip7-C/core/protocol"
 )
 
-// Buffer pool for resonance optimization - reduces GC pressure
+// Buffer pool for resonance optimization - reduce GC pressure
 var bufferPool = sync.Pool{
 	New: func() interface{} {
 		return make([]byte, 0, 4096)
 	},
 }
+
+var packetBufferPool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 0, 8192)
+	},
+}
+
+const (
+	priorityQueueDefaultSize  = 1024
+	priorityQueueMobileSize   = 512
+	priorityQueueDesktopSize  = 4096
+	priorityQueueStarlinkSize = 2048
+	priorityQueueEdgeSize     = 1024
+	pqcDecisionCacheDuration  = 100 * time.Millisecond
+)
 
 // ─── MoE Expert Dispatcher (inspirado en Gemma 4 MoE, ia.md §Google Gemma 4) ────────────────
 // En lugar de un dispatcher nico con dos colas, el túnel activa dinámicamente
@@ -59,16 +77,29 @@ type SubPortHandler func(addr protocol.IPv7Address, data []byte)
 // Soporta UDP (modo normal), UDP hole-punch (NAT traversal) y TCP (fallback).
 // Header por paquete: [10B IEU] + [3309B Firma PQC] + [Payload]
 // El header de 10 bytes incluye sub-puerto de multiplexación.
-type Tunnel struct {
-	Conn          *net.UDPConn
-	LocalNode     *protocol.Node
-	RemoteAddr    *net.UDPAddr
-	PriorityQueue chan []byte
-	StandardQueue chan []byte
+type PQCDecision struct {
+	attach    bool
+	nextCheck time.Time
+}
 
-	mu             sync.RWMutex
-	publicEndpoint string
-	deviceProfile  protocol.DeviceProfile // Perfil del dispositivo local
+// Tunnel es el núcleo de transporte de IPv7-IEU.
+// Soporta UDP (modo normal), UDP hole-punch (NAT traversal) y TCP (fallback).
+// Header por paquete: [10B IEU] + [3309B Firma PQC] + [Payload]
+// El header de 10 bytes incluye sub-puerto de multiplexación.
+type Tunnel struct {
+	Conn             *net.UDPConn
+	LocalNode        *protocol.Node
+	remoteAddrAtomic atomic.Pointer[net.UDPAddr]
+	PriorityQueue    chan []byte
+	StandardQueue    chan []byte
+
+	mu               sync.RWMutex
+	publicEndpoint   string
+	deviceProfile    protocol.DeviceProfile // Perfil del dispositivo local
+	NoPQC            bool                   // Desactivar firmas PQC
+	PqcMode          string                 // off | auto | on
+	lastPQCAttach    time.Time
+	pqcDecisionCache atomic.Pointer[PQCDecision]
 
 	// Router de sub-puertos: map[subPort] -> handler
 	subPortMu       sync.RWMutex
@@ -76,7 +107,7 @@ type Tunnel struct {
 }
 
 // NewTunnel inicializa un nuevo túnel IEU con soporte de transporte adaptativo.
-func NewTunnel(localNode *protocol.Node, localPort int, remoteIP string, remotePort int) (*Tunnel, error) {
+func NewTunnel(localNode *protocol.Node, localPort int, remoteIP string, remotePort int, noPQC bool, pqcMode string) (*Tunnel, error) {
 	laddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", localPort))
 	if err != nil {
 		return nil, err
@@ -95,14 +126,25 @@ func NewTunnel(localNode *protocol.Node, localPort int, remoteIP string, remoteP
 		}
 	}
 
+	mode := strings.ToLower(strings.TrimSpace(pqcMode))
+	if mode != "off" && mode != "on" {
+		mode = "auto"
+	}
+
+	queueSize := selectQueueSize(protocol.GetDeviceProfile(protocol.DeviceUnknown))
+
 	t := &Tunnel{
 		Conn:            conn,
 		LocalNode:       localNode,
-		RemoteAddr:      raddr,
-		PriorityQueue:   make(chan []byte, 1024),
-		StandardQueue:   make(chan []byte, 1024),
+		PriorityQueue:   make(chan []byte, queueSize),
+		StandardQueue:   make(chan []byte, queueSize),
 		subPortHandlers: make(map[uint16]SubPortHandler),
 		deviceProfile:   protocol.GetDeviceProfile(protocol.DeviceUnknown), // Perfil por defecto
+		NoPQC:           noPQC,
+		PqcMode:         mode,
+	}
+	if raddr != nil {
+		t.SetRemoteAddr(raddr)
 	}
 
 	go t.startDispatcher()
@@ -137,11 +179,130 @@ func (t *Tunnel) SetDeviceProfile(profile protocol.DeviceProfile) {
 		profile.Name, profile.LatencyThresholdMs, profile.MTUBytes)
 }
 
+func selectQueueSize(profile protocol.DeviceProfile) int {
+	switch profile.Class {
+	case protocol.DeviceMobile, protocol.DeviceWearable:
+		return priorityQueueMobileSize
+	case protocol.DeviceSatelliteLEO:
+		return priorityQueueStarlinkSize
+	case protocol.DeviceServer, protocol.DeviceDesktop, protocol.DeviceRouter, protocol.DeviceNAS, protocol.DeviceSmartTV, protocol.DeviceConsole:
+		return priorityQueueDesktopSize
+	case protocol.DeviceEdge:
+		return priorityQueueEdgeSize
+	default:
+		return priorityQueueDefaultSize
+	}
+}
+
 // GetDeviceProfile devuelve el perfil de dispositivo activo.
 func (t *Tunnel) GetDeviceProfile() protocol.DeviceProfile {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.deviceProfile
+}
+
+// SetPQCMode ajusta el modo de firmas PQC: off|auto|on
+func (t *Tunnel) SetPQCMode(mode string) {
+	t.mu.Lock()
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	switch mode {
+	case "off":
+		t.PqcMode = "off"
+	case "on":
+		t.PqcMode = "on"
+	default:
+		t.PqcMode = "auto"
+	}
+	if t.PqcMode == "off" {
+		t.NoPQC = true
+	} else {
+		t.NoPQC = false
+	}
+	t.mu.Unlock()
+	t.invalidatePQCDecisionCache()
+}
+
+func (t *Tunnel) GetPQCMode() string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.PqcMode
+}
+
+func (t *Tunnel) IsPQCEnabled() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.PqcMode != "off" && !t.NoPQC
+}
+
+func (t *Tunnel) GetRemoteAddr() *net.UDPAddr {
+	return t.remoteAddrAtomic.Load()
+}
+
+func (t *Tunnel) SetRemoteAddr(addr *net.UDPAddr) {
+	if addr == nil {
+		return
+	}
+	t.remoteAddrAtomic.Store(addr)
+}
+
+func (t *Tunnel) invalidatePQCDecisionCache() {
+	t.pqcDecisionCache.Store(nil)
+}
+
+func (t *Tunnel) shouldAttachPQC(important bool) bool {
+	now := time.Now()
+	t.mu.RLock()
+	mode := t.PqcMode
+	noPQC := t.NoPQC
+	t.mu.RUnlock()
+
+	if noPQC || mode == "off" {
+		return false
+	}
+	if mode == "on" {
+		return t.computePQCDecision(now, true)
+	}
+	if important {
+		return t.computePQCDecision(now, true)
+	}
+	cached := t.pqcDecisionCache.Load()
+	if cached != nil && now.Before(cached.nextCheck) {
+		return cached.attach
+	}
+	return t.computePQCDecision(now, false)
+}
+
+func (t *Tunnel) computePQCDecision(now time.Time, forceAttach bool) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.NoPQC || t.PqcMode == "off" {
+		decision := false
+		t.pqcDecisionCache.Store(&PQCDecision{attach: decision, nextCheck: now.Add(pqcDecisionCacheDuration)})
+		return decision
+	}
+	if t.PqcMode == "on" {
+		decision := true
+		t.lastPQCAttach = now
+		t.pqcDecisionCache.Store(&PQCDecision{attach: decision, nextCheck: now.Add(pqcDecisionCacheDuration)})
+		return decision
+	}
+	if forceAttach || t.lastPQCAttach.IsZero() {
+		decision := true
+		t.lastPQCAttach = now
+		t.pqcDecisionCache.Store(&PQCDecision{attach: decision, nextCheck: now.Add(pqcDecisionCacheDuration)})
+		return decision
+	}
+	if now.Sub(t.lastPQCAttach) > 5*time.Minute {
+		if rand.Float32() < 0.4 {
+			decision := true
+			t.lastPQCAttach = now
+			t.pqcDecisionCache.Store(&PQCDecision{attach: decision, nextCheck: now.Add(pqcDecisionCacheDuration)})
+			return decision
+		}
+	}
+	decision := false
+	t.pqcDecisionCache.Store(&PQCDecision{attach: decision, nextCheck: now.Add(pqcDecisionCacheDuration)})
+	return decision
 }
 
 // SetPublicEndpoint registra el endpoint público descubierto por STUN
@@ -203,23 +364,40 @@ func (t *Tunnel) startDispatcher() {
 				packet = p
 			}
 		}
-		t.mu.RLock()
-		raddr := t.RemoteAddr
-		t.mu.RUnlock()
+		raddr := t.GetRemoteAddr()
 		if raddr == nil {
 			continue // RemoteAddr aún no configurado, esperar
 		}
-		t.Conn.WriteToUDP(packet, raddr)
+		if _, err := t.Conn.WriteToUDP(packet, raddr); err != nil {
+			fmt.Printf("⚠️ [Dispatcher] Error al enviar paquete UDP: %v\n", err)
+		}
+		packetBufferPool.Put(packet[:0])
 	}
 }
 
-// buildPacket construye el paquete IEU completo con header + firma PQC + payload
-func buildPacket(addr protocol.IPv7Address, subPort uint16, payload []byte) []byte {
+// buildPacket construye el paquete IEU completo con header + firma PQC + payload (opcional)
+func buildPacket(addr protocol.IPv7Address, subPort uint16, payload []byte, attachPQC bool) []byte {
 	addrWithSP := addr
 	addrWithSP.SubPort = subPort
-	header := addrWithSP.SerializeHeader() // 10 bytes
-	sig := protocol.GenerateSignature(payload)
-	packet := append(header, sig...)
+	if attachPQC {
+		addrWithSP.Flags |= 0x01
+	}
+	header := addrWithSP.SerializeHeader()
+	requiredCap := len(header) + len(payload)
+	if attachPQC {
+		requiredCap += 3309
+	}
+	packet := packetBufferPool.Get().([]byte)
+	if cap(packet) < requiredCap {
+		packet = make([]byte, 0, requiredCap)
+	} else {
+		packet = packet[:0]
+	}
+	packet = append(packet, header...)
+	if attachPQC {
+		sig := protocol.GenerateSignature(payload)
+		packet = append(packet, sig...)
+	}
 	packet = append(packet, payload...)
 	return packet
 }
@@ -233,7 +411,7 @@ func (t *Tunnel) SendPriority(payload []byte) {
 // SendPriorityOnSubPort envía con prioridad en un sub-puerto lógico específico.
 // Activa el experto correcto según las condiciones de red actuales.
 func (t *Tunnel) SendPriorityOnSubPort(payload []byte, subPort uint16) {
-	if t.RemoteAddr == nil {
+	if t.GetRemoteAddr() == nil {
 		return
 	}
 
@@ -243,7 +421,7 @@ func (t *Tunnel) SendPriorityOnSubPort(payload []byte, subPort uint16) {
 	t.mu.RUnlock()
 
 	expert := selectExpert(payload, nodeLatency, profile)
-	packet := buildPacket(t.LocalNode.Address, subPort, payload)
+	packet := buildPacket(t.LocalNode.Address, subPort, payload, t.shouldAttachPQC(false))
 
 	switch expert {
 	case ExpertSatellite:
@@ -256,10 +434,12 @@ func (t *Tunnel) SendPriorityOnSubPort(payload []byte, subPort uint16) {
 				// Cola llena, esperar brevemente y reintentar (no bloquear goroutine)
 			}
 		}
+		packetBufferPool.Put(packet[:0])
 	default: // ExpertLatency y ExpertBulk: comportamiento estándar no bloqueante
 		select {
 		case t.PriorityQueue <- packet:
 		default:
+			packetBufferPool.Put(packet[:0])
 		}
 	}
 }
@@ -272,13 +452,14 @@ func (t *Tunnel) SendStandard(payload []byte) {
 
 // SendStandardOnSubPort envía en modo bulk en un sub-puerto lógico específico.
 func (t *Tunnel) SendStandardOnSubPort(payload []byte, subPort uint16) {
-	if t.RemoteAddr == nil {
+	if t.GetRemoteAddr() == nil {
 		return
 	}
-	packet := buildPacket(t.LocalNode.Address, subPort, payload)
+	packet := buildPacket(t.LocalNode.Address, subPort, payload, t.shouldAttachPQC(false))
 	select {
 	case t.StandardQueue <- packet:
 	default:
+		packetBufferPool.Put(packet[:0])
 	}
 }
 
@@ -295,14 +476,16 @@ func (t *Tunnel) SendSubPort(remote protocol.IPv7Address, subPort uint16, payloa
 	}
 
 	// Solo sabemos el IP / DNS, rutear via IP overlay (simplificado para P2P 1-a-1 actual)
-	packet := buildPacket(t.LocalNode.Address, subPort, payload)
+	packet := buildPacket(t.LocalNode.Address, subPort, payload, false)
 
-	destAddr := t.RemoteAddr
+	destAddr := t.GetRemoteAddr()
 	if destAddr == nil {
+		packetBufferPool.Put(packet[:0])
 		return fmt.Errorf("remote endpoint desconocido")
 	}
 
 	_, err := t.Conn.WriteToUDP(packet, destAddr)
+	packetBufferPool.Put(packet[:0])
 	return err
 }
 
@@ -325,13 +508,11 @@ func (t *Tunnel) Listen(handler func(addr protocol.IPv7Address, data []byte)) {
 			continue
 		}
 
-		// Actualizar RemoteAddr dinámicamente (soporte para IPs flotantes / LEO satellite)
-		// Fix: lectura y escritura completamente dentro del lock para eliminar data race.
-		t.mu.Lock()
-		if t.RemoteAddr == nil && remoteUDPAddr != nil {
-			t.RemoteAddr = remoteUDPAddr
+		// Actualizar RemoteAddr dinámicamente (soporte para IPs flotantes / LEO satellite).
+		// El acceso se convierte en lock-free de lectura para el dispatcher.
+		if remoteUDPAddr != nil {
+			t.SetRemoteAddr(remoteUDPAddr)
 		}
-		t.mu.Unlock()
 
 		// Ignorar paquetes de hole-punch
 		if n == 9 && string(buf[:9]) == "IEU_PUNCH" {
@@ -364,8 +545,8 @@ func (t *Tunnel) Listen(handler func(addr protocol.IPv7Address, data []byte)) {
 		}
 
 		// Anti-Spoofing Básico (Verificar procedencia)
-		if remoteUDPAddr != nil && t.RemoteAddr != nil {
-			if remoteUDPAddr.IP.String() != t.RemoteAddr.IP.String() {
+		if remoteUDPAddr != nil {
+			if cur := t.GetRemoteAddr(); cur != nil && remoteUDPAddr.IP.String() != cur.IP.String() {
 				fmt.Println("🚨 Paquete descartado: Alerta de Spoofing IPv6-in-IPv4 (CVE-2025-23019 mitigado)")
 				continue
 			}
@@ -373,13 +554,7 @@ func (t *Tunnel) Listen(handler func(addr protocol.IPv7Address, data []byte)) {
 
 		sig := buf[protocol.HeaderSize : protocol.HeaderSize+pqcSigSize] // sig
 		payloadSize := n - (protocol.HeaderSize + pqcSigSize)
-		payload := bufferPool.Get().([]byte)
-		if cap(payload) < payloadSize {
-			payload = make([]byte, payloadSize)
-		} else {
-			payload = payload[:payloadSize]
-		}
-		copy(payload, buf[protocol.HeaderSize+pqcSigSize:n])
+		payload := make([]byte, payloadSize)
 		copy(payload, buf[protocol.HeaderSize+pqcSigSize:n])
 
 		// Verificación PQC (Activada)

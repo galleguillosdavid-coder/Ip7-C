@@ -15,6 +15,8 @@ const NODES = [
   { id: 6, name: "Starlink LEO", country: "Satelital", flag: "🛰️", latency: 14, load: 12 },
 ];
 
+const API_BASE = "http://localhost:7781";
+
 export default function FluxVPNApp() {
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -27,12 +29,13 @@ export default function FluxVPNApp() {
     killSwitch: true,
     autoConnect: false,
     starlinkMode: true,
-    pqcStrict: true,
+    noPQC: false,
     ghostUpdater: true,
   });
   const [peers, setPeers] = useState([]);
   const [status, setStatus] = useState(null);
   const [metricsHistory, setMetricsHistory] = useState([]);
+  const [error, setError] = useState(null);
 
   const formatTime = (s) => {
     const h = Math.floor(s / 3600).toString().padStart(2, "0");
@@ -45,19 +48,26 @@ export default function FluxVPNApp() {
     if (connected) {
       await disconnectVPN();
       setConnecting(false);
+      setError(null);
+      return;
+    }
+    if (!selectedNode) {
+      setError("Please select a node first");
       return;
     }
     setConnecting(true);
+    setError(null);
     try {
       await connectVPN();
       setConnecting(false);
     } catch (err) {
       setConnecting(false);
+      setError(err.message || "Failed to connect");
     }
-  }, [connected]);
+  }, [connected, selectedNode]);
 
   useEffect(() => {
-    const es = new EventSource(`${API_BASE}/telemetry`);
+    const es = new EventSource(`${API_BASE}/v1/metrics/stream`);
     es.onmessage = (event) => {
       const data = JSON.parse(event.data);
       setStatus(prev => ({ ...prev, ...data }));
@@ -86,6 +96,25 @@ export default function FluxVPNApp() {
       handleConnect();
     }
   }, [settings.autoConnect, connected, connecting, handleConnect]);
+
+  useEffect(() => {
+    let interval;
+    if (connected) {
+      interval = setInterval(() => {
+        setElapsed(prev => prev + 1);
+      }, 1000);
+    } else {
+      setElapsed(0);
+    }
+    return () => clearInterval(interval);
+  }, [connected]);
+
+  useEffect(() => {
+    // Load initial config
+    axios.get(`${API_BASE}/config`).then(res => {
+      setSettings(prev => ({ ...prev, noPQC: res.data.no_pqc }));
+    }).catch(err => console.error("Error loading config:", err));
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -209,6 +238,17 @@ export default function FluxVPNApp() {
               </span>
             </div>
 
+            {/* Error Message */}
+            {error && (
+              <div style={{
+                marginTop: 16, padding: "12px", borderRadius: 12,
+                background: "rgba(255,61,90,0.1)", border: `1px solid ${red}40`,
+                color: red, fontSize: 12, textAlign: "center",
+              }}>
+                ❌ {error}
+              </div>
+            )}
+
             {/* Selected Node */}
             <button onClick={() => setView("nodes")}
               style={{
@@ -269,7 +309,7 @@ export default function FluxVPNApp() {
                 }}>
                   <div style={{ fontSize: 10, color: textSec, marginBottom: 2 }}>TIEMPO CONECTADO</div>
                   <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "monospace", letterSpacing: 2 }}>
-                    {status ? formatTime(status.connectedTime || 0) : "00:00:00"}
+                    {formatTime(elapsed)}
                   </div>
                 </div>
 
@@ -423,7 +463,7 @@ export default function FluxVPNApp() {
               { key: "killSwitch", label: "Kill Switch", desc: "Cortar internet si FluxVPN se desconecta" },
               { key: "autoConnect", label: "Auto-conectar", desc: "Conectar al iniciar el sistema" },
               { key: "starlinkMode", label: "Modo Starlink", desc: "Optimizar para redes satelitales LEO" },
-              { key: "pqcStrict", label: "PQC Estricto", desc: "Solo conexiones con nodos ML-DSA-65" },
+              { key: "noPQC", label: "Modo sin PQC", desc: "Desactivar firmas PQC para pruebas" },
               { key: "ghostUpdater", label: "GhostUpdater", desc: "Actualizaciones automáticas con SHA-256" },
             ].map((s, i) => (
               <div key={i} style={{
@@ -443,7 +483,9 @@ export default function FluxVPNApp() {
                 }} onClick={() => {
                   const newSettings = { ...settings, [s.key]: !settings[s.key] };
                   setSettings(newSettings);
-                  axios.post(`${API_BASE}/config`, newSettings).catch(err => console.error("Error updating config:", err));
+                  if (s.key === "noPQC") {
+                    axios.post(`${API_BASE}/config`, { no_pqc: newSettings[s.key] }).catch(err => console.error("Error updating config:", err));
+                  }
                 }}>
                   <div style={{
                     width: 18, height: 18, borderRadius: "50%",

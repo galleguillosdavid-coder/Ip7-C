@@ -32,9 +32,10 @@ type MicroDHT struct {
 	LocalID NodeID
 	Conn    *net.UDPConn
 
-	mu      sync.RWMutex
-	Buckets map[int][]*Peer
-	DB      map[NodeID]string // Almacén en Memoria Corta: Hash(DID) -> IP:Port
+	dbMu        sync.RWMutex
+	Buckets     [KeySize * 8][]*Peer
+	bucketLocks [KeySize * 8]sync.RWMutex
+	DB          map[NodeID]string // Almacén en Memoria Corta: Hash(DID) -> IP:Port
 
 	// Task Budget: limita RPC de salida para no saturar enlaces LEO/satelitales
 	budgetMu        sync.Mutex
@@ -43,7 +44,6 @@ type MicroDHT struct {
 	budgetWindowEnd time.Time // Fin de la ventana de tiempo actual
 	budgetWindow    time.Duration
 }
-
 
 type RPCMessage struct {
 	Type   string
@@ -68,9 +68,8 @@ func NewMicroDHT(localID string, port int) (*MicroDHT, error) {
 	dht := &MicroDHT{
 		LocalID:         HashString(localID),
 		Conn:            conn,
-		Buckets:         make(map[int][]*Peer),
 		DB:              make(map[NodeID]string),
-		budgetMax:       60,                // 60 RPCs por minuto por defecto
+		budgetMax:       60, // 60 RPCs por minuto por defecto
 		budgetWindow:    time.Minute,
 		budgetWindowEnd: time.Now().Add(time.Minute),
 	}
@@ -99,21 +98,21 @@ func (dht *MicroDHT) handleRPC(msg RPCMessage, addr *net.UDPAddr) {
 
 	switch msg.Type {
 	case "STORE":
-		dht.mu.Lock()
+		dht.dbMu.Lock()
 		dht.DB[msg.Key] = msg.Value
-		dht.mu.Unlock()
+		dht.dbMu.Unlock()
 	case "FIND_VALUE":
-		dht.mu.RLock()
+		dht.dbMu.RLock()
 		val, exists := dht.DB[msg.Key]
-		dht.mu.RUnlock()
+		dht.dbMu.RUnlock()
 		if exists {
 			reply := RPCMessage{Type: "FOUND", Sender: dht.LocalID, Key: msg.Key, Value: val}
 			dht.sendRPC(addr, reply)
 		}
 	case "FOUND":
-		dht.mu.Lock()
+		dht.dbMu.Lock()
 		dht.DB[msg.Key] = msg.Value
-		dht.mu.Unlock()
+		dht.dbMu.Unlock()
 	}
 }
 
@@ -138,9 +137,9 @@ func (dht *MicroDHT) updateBucket(id NodeID, addr *net.UDPAddr) {
 	if id == dht.LocalID {
 		return // No agregar a sí mismo
 	}
-	dht.mu.Lock()
-	defer dht.mu.Unlock()
 	idx := dht.bucketIndex(id)
+	dht.bucketLocks[idx].Lock()
+	defer dht.bucketLocks[idx].Unlock()
 	bucket := dht.Buckets[idx]
 	for _, p := range bucket {
 		if p.ID == id {
@@ -192,11 +191,14 @@ func (dht *MicroDHT) SetBudget(maxRPCsPerWindow int, window time.Duration) {
 
 // Announce propaga el Identificador Descentralizado (DID) W3C a la telaraña global
 func (dht *MicroDHT) Announce(key string, value string) {
-	dht.mu.Lock()
 	hashKey := HashString(key)
+	dht.dbMu.Lock()
 	dht.DB[hashKey] = value
-	peers := dht.Buckets[0]
-	dht.mu.Unlock()
+	dht.dbMu.Unlock()
+
+	dht.bucketLocks[0].RLock()
+	peers := append([]*Peer(nil), dht.Buckets[0]...)
+	dht.bucketLocks[0].RUnlock()
 
 	msg := RPCMessage{Type: "STORE", Sender: dht.LocalID, Key: hashKey, Value: value}
 	for _, peer := range peers {
@@ -207,10 +209,13 @@ func (dht *MicroDHT) Announce(key string, value string) {
 // Resolve busca en la red de manera asincrónica tolerando altas latencias LEO/GEO
 func (dht *MicroDHT) Resolve(key string) string {
 	hashKey := HashString(key)
-	dht.mu.RLock()
+	dht.dbMu.RLock()
 	val, ok := dht.DB[hashKey]
-	peers := dht.Buckets[0]
-	dht.mu.RUnlock()
+	dht.dbMu.RUnlock()
+
+	dht.bucketLocks[0].RLock()
+	peers := append([]*Peer(nil), dht.Buckets[0]...)
+	dht.bucketLocks[0].RUnlock()
 
 	if ok {
 		return val
@@ -234,9 +239,9 @@ func (dht *MicroDHT) Resolve(key string) string {
 		case <-timeout:
 			return ""
 		case <-ticker.C:
-			dht.mu.RLock()
+			dht.dbMu.RLock()
 			val, ok := dht.DB[hashKey]
-			dht.mu.RUnlock()
+			dht.dbMu.RUnlock()
 			if ok {
 				return val
 			}
@@ -247,15 +252,15 @@ func (dht *MicroDHT) Resolve(key string) string {
 // GetPeerList devuelve la lista de peers conocidos como strings "IP:Puerto"
 // para ser consumida por la REST API y el WoT descriptor.
 func (dht *MicroDHT) GetPeerList() []string {
-	dht.mu.RLock()
-	defer dht.mu.RUnlock()
 	var peers []string
-	for _, bucket := range dht.Buckets {
-		for _, p := range bucket {
+	for idx := 0; idx < KeySize*8; idx++ {
+		dht.bucketLocks[idx].RLock()
+		for _, p := range dht.Buckets[idx] {
 			if p.Addr != nil {
 				peers = append(peers, p.Addr.String())
 			}
 		}
+		dht.bucketLocks[idx].RUnlock()
 	}
 	return peers
 }

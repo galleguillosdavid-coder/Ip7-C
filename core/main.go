@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	_ "net/http/pprof"
 	"os"
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -32,7 +34,23 @@ func isAdmin() bool {
 	_, err := os.Open("\\\\.\\PHYSICALDRIVE0")
 	return err == nil
 }
+func setupWindowsTunRoute(ifaceName string, gateway string) error {
+	cmd := exec.Command("netsh", "interface", "ipv4", "add", "route", "prefix=0.0.0.0/0", fmt.Sprintf("interface=%s", ifaceName), fmt.Sprintf("nexthop=%s", gateway), "metric=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error agregando ruta TUN: %v (%s)", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
 
+func cleanupWindowsTunRoute(ifaceName string, gateway string) error {
+	cmd := exec.Command("netsh", "interface", "ipv4", "delete", "route", "prefix=0.0.0.0/0", fmt.Sprintf("interface=%s", ifaceName), fmt.Sprintf("nexthop=%s", gateway))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error eliminando ruta TUN: %v (%s)", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ Error fatal: %v\n", err)
@@ -57,6 +75,8 @@ func run() error {
 	subPort := flag.Uint("sub-port", 0, "Sub-puerto lógico de este nodo (0-65535). Ej: --sub-port 8080")
 	deviceType := flag.String("device", "unknown", "Tipo de dispositivo: router|nat|ap|server|nas|edge|desktop|notebook|mobile|wearable|smarttv|console|printer|camera|iot-sensor|actuator|smarthome|industrial|leo|starlink|geo|meo|vehicle|drone")
 	bootstrapNode := flag.String("bootstrap", "", "Endpoint de arranque Web3 para Malla P2P (ej. 192.168.0.1:4000)")
+	noPQC := flag.Bool("no-pqc", false, "Desactivar firmas PQC para pruebas de rendimiento")
+	pqcMode := flag.String("pqc-mode", "auto", "Modo PQC: off | auto | on")
 	flag.Parse()
 
 	// --- Verificación de Administrador ---
@@ -126,7 +146,7 @@ func run() error {
 	}
 
 	// --- 1. Inicializar Túnel Overlay (con NAT traversal automático) ---
-	tunnel, err := overlay.NewTunnel(localNode, *port, *remoteIP, *remotePort)
+	tunnel, err := overlay.NewTunnel(localNode, *port, *remoteIP, *remotePort, *noPQC, *pqcMode)
 	if err != nil {
 		return fmt.Errorf("fallo al inicializar túnel: %v", err)
 	}
@@ -193,19 +213,21 @@ func run() error {
 	go func() {
 		for {
 			time.Sleep(30 * time.Second)
-			if tunnel.RemoteAddr != nil {
+			if raddr := tunnel.GetRemoteAddr(); raddr != nil {
 				beaconData := []byte("QUANTUM_HANDSHAKE_SYNC")
 				sig := protocol.GenerateSignature(beaconData)
 				qAddr := protocol.NewIPv7(1, 1, 0xFFFFFFFF)
 				pkt := append(qAddr.SerializeHeader(), beaconData...)
 				pkt = append(pkt, sig...)
-				tunnel.Conn.WriteToUDP(pkt, tunnel.RemoteAddr)
+				tunnel.Conn.WriteToUDP(pkt, raddr)
 			}
 		}
 	}()
 
 	// --- 4. Adaptador Virtual TUN ---
 	var vIf *adapter.IEUInterface
+	tunRouteAdded := false
+	tunRouteGateway := "10.7.7.1"
 	if *useTUN {
 		fmt.Printf("🛠️ Creando interfaz virtual %s (%s)... ", *ifaceName, virtualIP)
 		vIf, err = adapter.NewIEUInterface(*ifaceName, virtualIP, "255.255.255.0")
@@ -223,6 +245,15 @@ func run() error {
 					exec.Command("netsh", "advfirewall", "firewall", "add", "rule", "name=IPv7-IEU", "dir=in", "action=allow", "protocol=ANY", "remoteip=10.7.7.0/24").Run()
 					exec.Command("netsh", "advfirewall", "firewall", "add", "rule", "name=IPv7-IEU-ICMP", "dir=in", "action=allow", "protocol=icmpv4").Run()
 				}()
+
+				if *remoteIP != "" {
+					if err := setupWindowsTunRoute(*ifaceName, tunRouteGateway); err != nil {
+						fmt.Printf("⚠️ No se pudo crear ruta de TUN: %v\n", err)
+					} else {
+						tunRouteAdded = true
+						fmt.Printf("🔀 Ruta TUN agregada por defecto via %s\n", tunRouteGateway)
+					}
+				}
 			}
 
 			// Bridge: OS -> IEU (Micro-slicing activo)
@@ -321,6 +352,13 @@ func run() error {
 	if runtime.GOOS == "windows" {
 		exec.Command("netsh", "advfirewall", "firewall", "delete", "rule", "name=IPv7-IEU").Run()
 		exec.Command("netsh", "advfirewall", "firewall", "delete", "rule", "name=IPv7-IEU-ICMP").Run()
+		if tunRouteAdded {
+			if err := cleanupWindowsTunRoute(*ifaceName, tunRouteGateway); err != nil {
+				fmt.Printf("⚠️ No se pudo eliminar ruta de TUN: %v\n", err)
+			} else {
+				fmt.Println("✅ Ruta TUN removida")
+			}
+		}
 	}
 	fmt.Printf("✅ Interfaz %s desconectada. Red restaurada.\n", *ifaceName)
 	return nil

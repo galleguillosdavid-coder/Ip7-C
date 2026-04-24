@@ -1,0 +1,3 @@
+@echo off 
+cd /d C:\Users\David\AppData\Local\Programs\IPv7 
+start IPv7-IEU C:\Users\David\AppData\Local\Programs\IPv7\ipv7.exe --role master --port 7778 --api-port 7781 --tun=true

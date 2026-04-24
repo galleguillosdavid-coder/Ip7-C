@@ -1,53 +1,92 @@
-# 🌐 IPv7-IEU: El Futuro de las Telecomunicaciones Dinámicas
+# 🌐 FluxVPN: VPN de Próxima Generación con Motor IPv7-IEU
 
 [![Build Status](https://github.com/galleguillosdavid-coder/Ip7-C/actions/workflows/release.yml/badge.svg)](https://github.com/galleguillosdavid-coder/Ip7-C/actions)
-[![Latest Release](https://img.shields.io/github/v/release/galleguillosdavid-coder/Ip7-IEU)](https://github.com/galleguillosdavid-coder/Ip7-C/releases/latest)
-[![Go Version](https://img.shields.io/badge/go-1.22-blue)](go.mod)
+[![Latest Release](https://img.shields.io/github/v/release/galleguillosdavid-coder/Ip7-C)](https://github.com/galleguillosdavid-coder/Ip7-C/releases/latest)
+[![Go Version](https://img.shields.io/badge/go-1.26-blue)](go.mod)
 [![License](https://img.shields.io/badge/license-Proprietary-red)]()
 
-Bienvenido a la primera capa de red de próxima generación. **IPv7-IEU** *(Injective Exponential Unit)* no es solo un protocolo de enrutamiento; es un salto evolutivo en la forma en que los datos atraviesan el mundo físico y satelital.
+Bienvenido a **FluxVPN**, la VPN de próxima generación que integra el motor de telecomunicaciones dinámicas IPv7-IEU. FluxVPN no es solo una VPN tradicional; es un salto evolutivo que trata la red como un campo gravitacional de fluidos logarítmicos, optimizando el flujo de datos con decisiones locales basadas en gradientes.
 
-## ¿Qué es IPv7-IEU?
-A diferencia de los protocolos tradicionales creados en la década de los 70s y 90s, IPv7-IEU desecha por completo la noción de direccionar máquinas usando "tablas estáticas" o "números discretos". En este ecosistema, una dirección de red es una **Identidad Topológica**. IPv7-IEU envuelve el tráfico convencional dentro de una matriz virtual que trata el internet no como cables desconectados, sino como un **campo gravitacional de fluidos logarítmicos**.
+## ¿Qué es FluxVPN?
+FluxVPN es una VPN multiplataforma (Windows, Linux, macOS, ARM) que utiliza el protocolo IPv7-IEU *(Injective Exponential Unit)* para enrutar paquetes de manera óptima. A diferencia de las VPNs convencionales, FluxVPN desecha tablas estáticas y direcciones discretas, utilizando **Identidades Topológicas** y un flujo optimizado por gradiente `-∇ ln(L)`.
 
-## ¿Qué hace y Cómo Funciona?
-Operando como un poderoso *Overlay Network* o software de túnel nativo escalable (Multiplataforma Windows, Linux, macOS, ARM):
-1. **Flujo Optimizado por Gradiente:** Cada paquete "fluye" hacia el destino siguiendo un diferencial de latencia óptimo `-∇ ln(L)`, tomando decisiones locales sin necesitar convergencia global (a diferencia de BGP/OSPF).
-2. **Adaptación Satelital:** Programado desde su concepción para hardware en el filo (*Edge Computing* como nodos Bmax) e internet de movilidad (Starlink). El motor IEU mitiga fluctuaciones de posición o caídas intermitentes, estabilizando latencias mediante gradientes auto-gestionados.
-3. **Resonancia Hardware:** Implementa afinidad de CPU a core 0 y asignación de memoria alineada para flujo laminar, reduciendo latencias en un 40-60% mediante syscalls directos (VirtualAlloc, SetProcessAffinityMask).
-4. **Actualización Ghost (GhostUpdater):** Arquitectura sigilosa multiplataforma con **verificación SHA-256 obligatoria** de cada binario descargado antes de la instalación. Los clientes se mantienen actualizados sin requerir interacción del usuario.
+### Características Clave:
+1. **Flujo Optimizado por Gradiente:** Paquetes que fluyen siguiendo diferenciales de latencia óptimos, sin convergencia global.
+2. **Adaptación Satelital:** Diseñado para edge computing y redes móviles como Starlink, mitigando fluctuaciones con gradientes auto-gestionados.
+3. **Resonancia Hardware:** Afinidad de CPU a core 0, memoria alineada, reducción de latencias en 40-60%.
+4. **Actualización Ghost:** Verificación SHA-256 obligatoria, actualizaciones silenciosas.
+5. **Seguridad PQC:** Firma y verificación estricta con ML-DSA-65 en cada paquete.
 
 ## ✅ Estado de Producción: v2.2.5 (Cuántica-Agentica con Resonancia)
 
 | Componente | Estado | Detalles |
 |---|---|---|
-| 🔐 **PQC ML-DSA-65** | ✅ Nuclear / Obligatorio | Firma y verificación estricta en **cada** paquete UDP |
-| 🛡️ **Anti-Spoofing** | ✅ Activo | Mitigación CVE-2025-23019 validando IPs capa dual |
-| 🧠 **Cripto-Decit MoE**| ✅ Estocástico | Dispatcher cuántico propulsado por entropía real de OS |
-| 🤖 **Agent Sandbox** | ✅ Determinista | Límite estricto de ejecución (100ms timeout) y Context API |
-| 🌐 **Kademlia DHT** | ✅ Asíncrono | Descubrimiento acelerado P2P por canales Go sin bloqueos |
-| 🔗 **Bootstrap P2P** | ✅ Operativo | Flag `--bootstrap` para auto-unirse a la red satelital |
-| 🛡️ **Verificación Updates** | ✅ SHA-256 | GhostUpdater valida hash antes de hot-swap |
-| ⚡ **Resonancia Hardware** | ✅ Activa | CPU Affinity a core 0, memoria alineada 4MB, reducción GC |
-| 📦 **Módulo Go** | ✅ Raíz | `go.mod` en raíz — compatible con Dependabot/CodeQL |
-| 🌍 **Multiplataforma** | ✅ Universal | Windows / Linux x64 / Linux ARM64 / macOS Intel / M1-M3 |
-| 🛡️ **Verificación Admin** | ✅ Obligatoria | Ejecuta como Admin para TUN y puertos en Windows |
+| 🔐 **PQC ML-DSA-65** | ✅ Nuclear / Obligatorio | Firma en cada paquete UDP |
+| 🛡️ **Anti-Spoofing** | ✅ Activo | Mitigación CVE-2025-23019 |
+| 🧠 **Cripto-Decit MoE**| ✅ Estocástico | Dispatcher cuántico |
+| 🤖 **Agent Sandbox** | ✅ Determinista | Timeout 100ms |
+| 🌐 **Kademlia DHT** | ✅ Asíncrono | Descubrimiento P2P |
+| 🔗 **Bootstrap P2P** | ✅ Operativo | Flag `--bootstrap` |
+| 🛡️ **Verificación Updates** | ✅ SHA-256 | GhostUpdater |
+| ⚡ **Resonancia Hardware** | ✅ Activa | CPU Affinity, memoria 4MB |
+| 📦 **Módulo Go** | ✅ Raíz | Compatible con Dependabot |
+| 🌍 **Multiplataforma** | ✅ Universal | Windows/Linux/macOS/ARM |
+| 🛡️ **Verificación Admin** | ✅ Obligatoria | Para TUN en Windows |
 
-## 🚀 Instalación Rápida
+## 📁 Estructura del Proyecto
+- **core/**: Código fuente principal en Go
+- **ui/**: Interfaz web React/Vite
+- **benchmarks/**: Scripts de rendimiento
+- **scripts/**: Scripts de lanzamiento y configuración
+- **bin/**: Binarios compilados
+- **docs/**: Documentación técnica
+- **tools/**: Herramientas auxiliares
 
-### Descarga Directa (Recomendado)
-```bash
-# Linux x64
-curl -LO https://github.com/galleguillosdavid-coder/Ip7-C/releases/latest/download/ipv7-linux-amd64
-chmod +x ipv7-linux-amd64
+## 🚀 Instalación y Uso
 
-# Verificar integridad SHA-256
-curl -LO https://github.com/galleguillosdavid-coder/Ip7-C/releases/latest/download/SHA256SUMS.txt
-sha256sum -c SHA256SUMS.txt
-```
+### Instalación Automática
+Ejecuta `launch.bat` en la raíz para iniciar la VPN instalada en `C:\Program Files\FluxVPN\`.
 
 ### Compilación desde Fuente
 ```bash
+go build -o fluxvpn.exe ./core
+```
+
+### Uso Básico
+```bash
+# Iniciar como master
+fluxvpn.exe --role master --api-port 8080
+
+# Conectar a nodo remoto
+fluxvpn.exe --remote 192.168.1.100 --port 7778
+```
+
+### API REST y Profiling
+La API REST se expone en `http://127.0.0.1:{api-port}` (por defecto 7781).
+
+- **Endpoints principales:**
+  - `GET /v1/status` - Estado del nodo
+  - `GET /v1/metrics/stream` - SSE de métricas en tiempo real
+  - `GET/POST /config` - Leer/actualizar configuración PQC
+  - `GET /debug/pprof/` - Profiling Go (usa `go tool pprof`)
+
+- **Configuración PQC:**
+  - Modo sin PQC: `POST /config {"no_pqc": true}`
+  - Modo PQC: `POST /config {"pqc_mode": "auto|on|off"}`
+
+Para profiling: `go tool pprof http://127.0.0.1:7781/debug/pprof/profile`
+
+## 📚 Documentación
+- [Arquitectura](docs/architecture.md): Detalles técnicos del sistema
+- [Paradigma del Gradiente](docs/gradient-paradigm.md): Guía de desarrollo
+- [Paper Técnico](docs/paper.md): Explicación matemática
+- [Whitepaper](docs/whitepaper.md): Visión general
+
+## 🤝 Contribución
+Este proyecto utiliza el Paradigma del Gradiente Logarítmico para optimizar decisiones de código. Sigue las instrucciones en `docs_extra/instrucciones-paradigma-gradiente.md`.
+
+## 📄 Licencia
+Propietaria - Todos los derechos reservados.
 git clone https://github.com/galleguillosdavid-coder/Ip7-C.git
 cd Ip7-C
 go build -o ipv7 core/main.go core/security_$(uname -s | tr '[:upper:]' '[:lower:]').go core/embed_$(uname -s | tr '[:upper:]' '[:lower:]').go core/updater.go

@@ -1,10 +1,12 @@
 package bridge
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/pprof"
 	"os/exec"
 	"runtime"
 	"time"
@@ -77,6 +79,19 @@ func StartRESTAPI(info *NodeInfo, port int) {
 	mux.HandleFunc("/v1/metrics/reset", func(w http.ResponseWriter, r *http.Request) {
 		handleMetricsReset(w, r)
 	})
+	mux.HandleFunc("/config", func(w http.ResponseWriter, r *http.Request) {
+		handleConfig(w, r, info)
+	})
+	mux.HandleFunc("/v1/config", func(w http.ResponseWriter, r *http.Request) {
+		handleConfig(w, r, info)
+	})
+
+	// ── Profiling (net/http/pprof) ──────────────────────────────────────────
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
 	// ── QoS / Slices (Necesidades.md §QoS / Previsiones.md §Network Slicing) ─
 	// GET /v1/slices → Catálogo de slice profiles para todos los dispositivos
@@ -87,25 +102,38 @@ func StartRESTAPI(info *NodeInfo, port int) {
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	url := "http://" + addr
 	fmt.Printf("🖥️  [Dashboard] Abre en navegador: %s\n", url)
-	
+
 	// Abrir automáticamente la URL del Dashboard en el navegador por defecto
-	if runtime.GOOS == "windows" {
-		exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
-	} else if runtime.GOOS == "darwin" {
-		exec.Command("open", url).Start()
-	} else {
-		exec.Command("xdg-open", url).Start()
-	}
+	go openBrowserAsync(url)
 
 	srv := &http.Server{
-		Addr:         addr,
-		Handler:      corsMiddleware(mux),
-		ReadTimeout:  0, // SSE requiere sin timeout de read
-		WriteTimeout: 0,
-		IdleTimeout:  120 * time.Second,
+		Addr:              addr,
+		Handler:           corsMiddleware(mux),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      0,
+		IdleTimeout:       120 * time.Second,
 	}
 	if err := srv.ListenAndServe(); err != nil {
 		fmt.Printf("❌ [REST API] Error fatal: %v\n", err)
+	}
+}
+
+func openBrowserAsync(url string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", url)
+	} else if runtime.GOOS == "darwin" {
+		cmd = exec.CommandContext(ctx, "open", url)
+	} else {
+		cmd = exec.CommandContext(ctx, "xdg-open", url)
+	}
+
+	if err := cmd.Start(); err != nil {
+		fmt.Printf("⚠️ [Dashboard] No se pudo abrir el navegador: %v\n", err)
 	}
 }
 
@@ -235,7 +263,7 @@ func handleEgress(w http.ResponseWriter, r *http.Request, info *NodeInfo) {
 		http.Error(w, "Method Not Allowed", 405)
 		return
 	}
-	
+
 	url := r.URL.Query().Get("url")
 	if url == "" {
 		http.Error(w, "Query parameter 'url' is required", 400)
@@ -243,13 +271,13 @@ func handleEgress(w http.ResponseWriter, r *http.Request, info *NodeInfo) {
 	}
 
 	masterDID := r.URL.Query().Get("master_did")
-	
+
 	err := TriggerSatelliteDownload(info.Tunnel, masterDID, url)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	
+
 	jsonResponse(w, map[string]interface{}{
 		"status": "download_started",
 		"target": url,
@@ -329,4 +357,33 @@ func jsonResponse(w http.ResponseWriter, data interface{}, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(data)
+}
+
+// GET/POST /config — Leer y actualizar configuración del nodo
+func handleConfig(w http.ResponseWriter, r *http.Request, info *NodeInfo) {
+	switch r.Method {
+	case http.MethodGet:
+		// Leer configuración actual
+		pqcMode := info.Tunnel.GetPQCMode()
+		config := map[string]interface{}{
+			"pqc_mode": pqcMode,
+		}
+		jsonResponse(w, config, http.StatusOK)
+	case http.MethodPost:
+		// Actualizar configuración
+		var body struct {
+			PqcMode string `json:"pqc_mode"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "Bad Request: "+err.Error(), 400)
+			return
+		}
+		// Validar pqc_mode
+		if body.PqcMode != "" {
+			info.Tunnel.SetPQCMode(body.PqcMode)
+		}
+		jsonResponse(w, map[string]string{"status": "updated"}, http.StatusOK)
+	default:
+		http.Error(w, "Method Not Allowed", 405)
+	}
 }

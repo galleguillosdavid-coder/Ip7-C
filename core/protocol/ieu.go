@@ -14,6 +14,7 @@ type IPv7Address struct {
 	DeviceID   float64
 	ResolvedIP float64
 	SubPort    uint16
+	Flags      uint8
 }
 
 func NewIPv7(r, s, d float64) IPv7Address {
@@ -23,7 +24,7 @@ func NewIPv7(r, s, d float64) IPv7Address {
 	h := fnv.New64a()
 	h.Write([]byte(fmt.Sprintf("%.0f:%.0f:%.0f", r, s, d)))
 	val := float64(h.Sum64() & 0x1FFFFFFFFFFFFF)
-	return IPv7Address{Region: r, Subnet: s, DeviceID: d, ResolvedIP: val, SubPort: 0}
+	return IPv7Address{Region: r, Subnet: s, DeviceID: d, ResolvedIP: val, SubPort: 0, Flags: 0}
 }
 
 func NewIPv7WithSubPort(r, s, d float64, subPort uint16) IPv7Address {
@@ -37,7 +38,7 @@ func (a IPv7Address) Equals(b IPv7Address) bool {
 }
 
 func (a IPv7Address) SerializeHeader() []byte {
-	buf := make([]byte, 10)
+	buf := make([]byte, HeaderSize)
 	binary.BigEndian.PutUint16(buf[0:2], uint16(a.Region))
 	binary.BigEndian.PutUint16(buf[2:4], uint16(a.Subnet))
 	binary.BigEndian.PutUint32(buf[4:8], uint32(a.DeviceID))
